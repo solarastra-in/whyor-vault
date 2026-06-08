@@ -1,6 +1,32 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap');
 @import "tailwindcss";
 
+:root {
+  --slate-950: #020617;
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-750: #2a354f;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-200: #e2e8f0;
+  --white: #ffffff;
+}
+
+:root.light {
+  --slate-950: #f8fafc;
+  --slate-900: #ffffff;
+  --slate-800: #e2e8f0;
+  --slate-750: #cbd5e1;
+  --slate-700: #64748b;
+  --slate-600: #475569;
+  --slate-500: #334155;
+  --slate-400: #1e293b;
+  --slate-200: #0f172a;
+  --white: #020617;
+}
+
 @theme {
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "DM Mono", ui-monospace, SFMono-Regular, monospace;
@@ -13,14 +39,17 @@
   --color-indigo-800: #3730a3;
   --color-indigo-900: #312e81;
 
-  --color-slate-950: #020617;
-  --color-slate-900: #0f172a;
-  --color-slate-800: #1e293b;
-  --color-slate-700: #334155;
-  --color-slate-600: #475569;
-  --color-slate-500: #64748b;
-  --color-slate-400: #94a3b8;
-  --color-slate-200: #e2e8f0;
+  --color-slate-950: var(--slate-950);
+  --color-slate-900: var(--slate-900);
+  --color-slate-805: var(--slate-805, #121c30);
+  --color-slate-800: var(--slate-800);
+  --color-slate-750: var(--slate-750);
+  --color-slate-700: var(--slate-700);
+  --color-slate-600: var(--slate-600);
+  --color-slate-500: var(--slate-500);
+  --color-slate-400: var(--slate-400);
+  --color-slate-200: var(--slate-200);
+  --color-white: var(--white);
 
   --color-emerald-400: #34d399;
   --color-emerald-500: #10b981;
@@ -40,6 +69,7 @@ body {
   background-color: var(--color-slate-950);
   color: var(--color-slate-200);
   font-family: var(--font-sans);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .grid-bg {

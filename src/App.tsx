@@ -365,7 +365,7 @@ import {
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Sun, Moon
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
@@ -647,6 +647,28 @@ export default function App() {
   const [networkErrorIndicator, setNetworkErrorIndicator] = useState(false);
   const [recoveredAnswers, setRecoveredAnswers] = useState<string[] | null>(null);
   const [showAnswersBanner, setShowAnswersBanner] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('theme');
+      if (stored === 'light' || stored === 'dark') {
+        return stored;
+      }
+    }
+    return 'dark';
+  });
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
   
   useEffect(() => {
     const handleNotify = (e: any) => {
@@ -1165,6 +1187,8 @@ export default function App() {
             popupBlockedIndicator={popupBlockedIndicator}
             networkErrorIndicator={networkErrorIndicator}
             onAdminClick={() => setScreen('admin_login')}
+            theme={theme}
+            onToggleTheme={toggleTheme}
           />
         )}
 
@@ -1194,13 +1218,22 @@ export default function App() {
                   <p className="text-[9px] text-slate-500 uppercase font-mono">Logged in as system administrator</p>
                 </div>
               </div>
-              <button
-                onClick={() => setScreen('auth')}
-                className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-4 rounded-apex transition-all border border-slate-750"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Close Console
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={toggleTheme}
+                  className="flex items-center justify-center p-2.5 rounded-apex bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-750 cursor-pointer"
+                  title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                >
+                  {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={() => setScreen('auth')}
+                  className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-4 rounded-apex transition-all border border-slate-750"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Close Console
+                </button>
+              </div>
             </header>
             <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full p-8 bg-slate-950">
               <AdminPanel 
@@ -1341,6 +1374,8 @@ export default function App() {
                   setRecoveredAnswers={setRecoveredAnswers}
                   showAnswersBanner={showAnswersBanner}
                   setShowAnswersBanner={setShowAnswersBanner}
+                  theme={theme}
+                  onToggleTheme={toggleTheme}
                 />
               </motion.div>
             )}
@@ -1418,7 +1453,7 @@ export default function App() {
 
 // --- Screen Components ---
 
-function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupBlockedIndicator, networkErrorIndicator, onAdminClick }: { onLogin: () => void, onSandboxLogin: () => void, onShowGuide: () => void, loginPending?: boolean, popupBlockedIndicator: boolean, networkErrorIndicator: boolean, onAdminClick?: () => void, key?: string }) {
+function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupBlockedIndicator, networkErrorIndicator, onAdminClick, theme, onToggleTheme }: { onLogin: () => void, onSandboxLogin: () => void, onShowGuide: () => void, loginPending?: boolean, popupBlockedIndicator: boolean, networkErrorIndicator: boolean, onAdminClick?: () => void, theme?: 'light' | 'dark', onToggleTheme?: () => void, key?: string }) {
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   return (
@@ -1439,14 +1474,24 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
             <h1 className="text-2xl font-extrabold font-display tracking-tight text-white leading-none">
               WhyOr<span className="text-indigo-400">Vault</span>
             </h1>
-            <div className="flex items-center gap-4 mt-1">
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Secured by Neeraj Jain</p>
+            <div className="flex items-center gap-4 mt-2">
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">Secured by Neeraj Jain</p>
               <button 
                 onClick={onShowGuide}
                 className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest border-b border-indigo-500/30 hover:text-white hover:border-white transition-all cursor-pointer pointer-events-auto"
               >
-                Protocol Anatomy
+                Anatomy
               </button>
+              {onToggleTheme && (
+                <button
+                  onClick={onToggleTheme}
+                  className="text-[10px] text-indigo-400 hover:text-white flex items-center gap-1 uppercase tracking-widest font-bold transition-all cursor-pointer"
+                  title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                >
+                  {theme === 'light' ? <Moon className="h-3 w-3 text-indigo-400" /> : <Sun className="h-3 w-3 text-indigo-400" />}
+                  Theme
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -3447,7 +3492,9 @@ function VaultMain({
   recoveredAnswers,
   setRecoveredAnswers,
   showAnswersBanner,
-  setShowAnswersBanner
+  setShowAnswersBanner,
+  theme,
+  onToggleTheme
 }: { 
   entries: DecryptedItem[], 
   encryptionKey: CryptoKey, 
@@ -3467,6 +3514,8 @@ function VaultMain({
   setRecoveredAnswers: (val: string[] | null) => void,
   showAnswersBanner: boolean,
   setShowAnswersBanner: (val: boolean) => void,
+  theme?: 'light' | 'dark',
+  onToggleTheme?: () => void,
   key?: string 
 }) {
   const [items, setItems] = useState<DecryptedItem[]>(initialEntries);
@@ -4044,45 +4093,57 @@ function VaultMain({
             </p>
           </div>
           
-          {filter !== 'admin' && (
-            <button 
-               onClick={() => {
-                 const isPremium = vaultConfig?.isPremium === true;
-                 const limit = vaultConfig?.userCustomFreeLimit ?? systemConfig.freeLimit;
-                 if (!isPremium && items.length >= limit) {
-                   setIsPaywallModalOpen(true);
-                 } else {
-                   setEditingItem(null);
-                   setIsAddModalOpen(true);
-                 }
-               }}
-               className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/40 active:translate-y-0.5"
-            >
-              <Plus className="h-5 w-5" />
-              Declare Record
-            </button>
-          )}
-          
-          {filter !== 'admin' && (
-            <div className="flex gap-4">
-              {isOwner && (
-                <button 
-                  onClick={() => setIsShareModalOpen(true)}
-                  className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-white"
-                >
-                  <Plus className="h-4 w-4" />
-                  Family Sharing
-                </button>
-              )}
-              <button 
-                onClick={exportVault}
-                className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-emerald-400"
+          <div className="flex items-center gap-3 shrink-0">
+            {onToggleTheme && (
+              <button
+                onClick={onToggleTheme}
+                className="p-3 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded-lg font-bold flex items-center justify-center transition-all cursor-pointer hover:border-slate-700 hover:bg-slate-800"
+                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
               >
-                <RefreshCw className="h-4 w-4" />
-                Export Backup
+                {theme === 'light' ? <Moon className="h-4.5 w-4.5" /> : <Sun className="h-4.5 w-4.5" />}
               </button>
-            </div>
-          )}
+            )}
+
+            {filter !== 'admin' && (
+              <button 
+                 onClick={() => {
+                   const isPremium = vaultConfig?.isPremium === true;
+                   const limit = vaultConfig?.userCustomFreeLimit ?? systemConfig.freeLimit;
+                   if (!isPremium && items.length >= limit) {
+                     setIsPaywallModalOpen(true);
+                   } else {
+                     setEditingItem(null);
+                     setIsAddModalOpen(true);
+                   }
+                 }}
+                 className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/40 active:translate-y-0.5 whitespace-nowrap"
+              >
+                <Plus className="h-5 w-5" />
+                Declare Record
+              </button>
+            )}
+            
+            {filter !== 'admin' && (
+              <div className="flex gap-4">
+                {isOwner && (
+                  <button 
+                    onClick={() => setIsShareModalOpen(true)}
+                    className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-white whitespace-nowrap"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Family Sharing
+                  </button>
+                )}
+                <button 
+                  onClick={exportVault}
+                  className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-emerald-400 whitespace-nowrap"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Backup
+                </button>
+              </div>
+            )}
+          </div>
         </header>
 
         <div className="relative z-10">
