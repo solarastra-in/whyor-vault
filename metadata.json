@@ -1,0 +1,9 @@
+{
+  "name": "WhyOr Vault",
+  "description": "A secure, zero-knowledge vault for sensitive card and account details, protected by multi-factor security questions and emergency master key access.",
+  "requestFramePermissions": [
+    "publickey-credentials-get",
+    "publickey-credentials-create"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

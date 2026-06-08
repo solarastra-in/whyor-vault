@@ -1,0 +1,235 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isNotCorrupted(vaultId) {
+      return !exists(/databases/$(database)/documents/vaults/$(vaultId)/vault/config) ||
+        !("isCorrupted" in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data) ||
+        get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.isCorrupted != true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        ("email" in request.auth.token && request.auth.token.email == "solarastra.in@gmail.com") ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Admins Collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // System Settings Configuration
+    match /system/config {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Vault central registry
+    match /vault_registry/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Payment transactions central log
+    match /payment_transactions/{txId} {
+      allow list, get: if isSignedIn() && (isAdmin() || (resource != null && resource.data.userId == request.auth.uid));
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Connection Probe document
+    match /vaults/{vaultId} {
+      allow get: if isSignedIn();
+    }
+
+    // Vault Configuration
+    match /vaults/{vaultId}/vault/config {
+      function canAccessVaultConfig() {
+        return isSignedIn() && (
+          request.auth.uid == vaultId || 
+          (exists(/databases/$(database)/documents/vaults/$(vaultId)/vault/config) && (
+            request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.members || 
+            request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners ||
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.keys().contains('ownerEmails') && request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.ownerEmails)
+          ))
+        );
+      }
+
+      // Allow get/list if they are the owner, a member or admin
+      allow get: if canAccessVaultConfig() || isAdmin();
+      
+      // Allow create if they are the vaultId owner
+      allow create: if isOwner(vaultId) && 
+        incoming().keys().hasAll(['signatureHash', 'salt', 'ownerId', 'members', 'owners', 'ownerEmails', 'answerSalts', 'masterKeySalt', 'hashedMasterKey']) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().members is list &&
+        incoming().owners is list &&
+        incoming().ownerEmails is list &&
+        incoming().answerSalts is list &&
+        incoming().answerSalts.size() == 10;
+
+      allow update: if (canAccessVaultConfig() || isAdmin()) && 
+        incoming().ownerId == existing().ownerId &&
+        (
+          isAdmin() ||
+          // Action: Update failed attempts, corruption, members, or owners list
+          incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails'])
+          ||
+          // Action: Reset vault (re-setup)
+          incoming().diff(existing()).affectedKeys().hasAll(['signatureHash', 'salt'])
+          ||
+          // Action: Rotate master key (creator/owner only)
+          (isOwner(vaultId) && incoming().diff(existing()).affectedKeys().hasOnly(['masterKeySalt', 'hashedMasterKey', 'hashedDuressKey', 'masterKeyFailedAttempts', 'encryptedSignatureEscrow', 'encryptedAnswersEscrow']))
+        );
+
+      allow delete: if isOwner(vaultId);
+    }
+
+    // Vault Items
+    match /vaults/{vaultId}/items/{itemId} {
+      function canAccessVault() {
+        return isSignedIn() && isNotCorrupted(vaultId) && (
+          request.auth.uid == vaultId || 
+          (exists(/databases/$(database)/documents/vaults/$(vaultId)/vault/config) && (
+            request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.members || 
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners is list && request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners) ||
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.keys().contains('ownerEmails') && request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.ownerEmails)
+          ))
+        );
+      }
+
+      allow list, get: if canAccessVault();
+      allow create: if canAccessVault() && 
+        incoming().ownerId == request.auth.uid &&
+        incoming().encryptedData is string &&
+        incoming().encryptedData.size() <= 1048576; 
+      allow update: if canAccessVault() && 
+        incoming().ownerId == existing().ownerId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['encryptedData', 'type', 'name', 'updatedAt']);
+      allow delete: if canAccessVault();
+    }
+
+    // Vault Attachments
+    match /vaults/{vaultId}/attachments/{attachmentId} {
+      function canAccessVault() {
+        return isSignedIn() && isNotCorrupted(vaultId) && (
+          request.auth.uid == vaultId || 
+          (exists(/databases/$(database)/documents/vaults/$(vaultId)/vault/config) && (
+            request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.members || 
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners is list && request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners) ||
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.keys().contains('ownerEmails') && request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.ownerEmails)
+          ))
+        );
+      }
+
+      allow list, get: if canAccessVault();
+      allow create: if canAccessVault() && 
+        incoming().encryptedPayload is string &&
+        incoming().encryptedPayload.size() <= 10485760; // Up to 10MB
+      allow update, delete: if canAccessVault();
+    }
+
+    // Audit Logs
+    match /vaults/{vaultId}/audit_logs/{logId} {
+      function canAccessAudit() {
+        return isSignedIn() && (
+          request.auth.uid == vaultId || 
+          (exists(/databases/$(database)/documents/vaults/$(vaultId)/vault/config) && (
+            request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.members || 
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners is list && request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners) ||
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.keys().contains('ownerEmails') && request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.ownerEmails)
+          ))
+        );
+      }
+
+      allow list, get: if canAccessAudit();
+      allow create: if canAccessAudit() &&
+        (incoming().timestamp is int || incoming().timestamp is float) &&
+        incoming().actorId == request.auth.uid &&
+        (
+          incoming().actorEmail == null || 
+          incoming().actorEmail == "" || 
+          incoming().actorEmail == "unknown@user.com" || 
+          !("email" in request.auth.token) || 
+          incoming().actorEmail == request.auth.token.email ||
+          incoming().actorEmail.lower() == request.auth.token.email.lower()
+        );
+      allow delete: if isOwner(vaultId);
+      allow update: if false;
+    }
+
+    // Archived Items (Audit Trail legacy)
+    match /vaults/{vaultId}/archived_items/{archiveId} {
+      function canWriteArchive() {
+        return isSignedIn() && isNotCorrupted(vaultId) && (
+          request.auth.uid == vaultId || 
+          (exists(/databases/$(database)/documents/vaults/$(vaultId)/vault/config) && (
+            request.auth.uid in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.owners ||
+            (get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.keys().contains('ownerEmails') && request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.ownerEmails) ||
+            request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vaultId)/vault/config).data.members
+          ))
+        );
+      }
+      allow create: if canWriteArchive();
+      allow list, get: if canWriteArchive();
+      allow delete: if isOwner(vaultId);
+    }
+
+    // User Profile (for activeVaultId pointer)
+    match /users/{userId} {
+      allow get, create, update, delete: if isOwner(userId);
+    }
+
+    // Dynamic Handshake Tokens
+    match /join_tokens/{token} {
+      function isVaultAdmin(vId) {
+        return isSignedIn() && (
+          request.auth.uid == vId || 
+          (exists(/databases/$(database)/documents/vaults/$(vId)/vault/config) && (
+            request.auth.uid in get(/databases/$(database)/documents/vaults/$(vId)/vault/config).data.owners ||
+            (get(/databases/$(database)/documents/vaults/$(vId)/vault/config).data.keys().contains('ownerEmails') && request.auth.token.email in get(/databases/$(database)/documents/vaults/$(vId)/vault/config).data.ownerEmails)
+          ))
+        );
+      }
+
+      // Allow reading token to find vaultId, but ONLY if token is less than 30 mins old
+      allow get: if isSignedIn() && (resource == null || request.time < resource.data.expires);
+      
+      // Allow creation/update by vault owners
+      allow create, update: if isVaultAdmin(incoming().vaultId) && 
+        incoming().expires > request.time;
+        
+      // Allow deletion/cleanup by owner
+      allow delete: if isVaultAdmin(resource.data.vaultId);
+    }
+  }
+}

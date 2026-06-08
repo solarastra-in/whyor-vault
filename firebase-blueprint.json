@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "VaultConfig": {
+      "title": "Vault Configuration",
+      "description": "User specific security configuration for the vault.",
+      "type": "object",
+      "properties": {
+        "hashedAnswers": {
+          "type": "array",
+          "description": "SHA-256 hashes of the 10 security answers."
+        },
+        "salt": {
+          "type": "string",
+          "description": "Unique salt used for key derivation."
+        },
+        "failedAttempts": {
+          "type": "number",
+          "description": "Number of consecutive failed login attempts."
+        },
+        "isCorrupted": {
+          "type": "boolean",
+          "description": "Whether the vault is in a corrupted state due to limit exceeded."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase UID of the owner."
+        }
+      },
+      "required": ["hashedAnswers", "salt", "ownerId"]
+    },
+    "VaultItem": {
+      "title": "Vault Item",
+      "description": "An encrypted record of a card or account.",
+      "type": "object",
+      "properties": {
+        "encryptedData": {
+          "type": "string",
+          "description": "The AES-GCM encrypted blob (JSON-stringified record)."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["credit", "debit", "bank", "other"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Encrypted or unencrypted label for quick filtering (depending on security needs). Prefer encrypted if full zero-knowledge."
+        },
+        "ownerId": {
+          "type": "string"
+        }
+      },
+      "required": ["encryptedData", "ownerId"]
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "An immutable record of an action performed within the vault.",
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "number",
+          "description": "Server-side timestamp of the action."
+        },
+        "actorId": {
+          "type": "string",
+          "description": "UID of the user who performed the action."
+        },
+        "actorEmail": {
+          "type": "string",
+          "description": "Email of the user who performed the action."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["CREATE", "UPDATE", "DELETE", "EXPORT", "IMPORT", "LOGIN_SUCCESS", "LOGIN_FAIL", "REVOKE_ACCESS", "GRANT_ACCESS"],
+          "description": "The type of action performed."
+        },
+        "resourceType": {
+          "type": "string",
+          "enum": ["ITEM", "VAULT_CONFIG", "MEMBER", "VAULT"],
+          "description": "Target of the action."
+        },
+        "resourceId": {
+          "type": "string",
+          "description": "ID of the affected resource."
+        },
+        "details": {
+          "type": "string",
+          "description": "Human-readable summary of the change (non-sensitive)."
+        }
+      },
+      "required": ["timestamp", "actorId", "actorEmail", "action", "resourceType"]
+    }
+  },
+  "firestore": {
+    "vaults/{vaultId}/vault/config": {
+      "schema": "VaultConfig",
+      "description": "Security setup for the user's vault."
+    },
+    "vaults/{vaultId}/items/{itemId}": {
+      "schema": "VaultItem",
+      "description": "Individual encrypted items in the vault."
+    },
+    "vaults/{vaultId}/attachments/{attachmentId}": {
+      "schema": "string",
+      "description": "Secure content-addressed client-side encrypted attachments."
+    },
+    "vaults/{vaultId}/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Immutable history of actions for the vault."
+    },
+    "system/config": {
+      "schema": "object",
+      "description": "Global application properties like rates and quotas."
+    },
+    "vault_registry/{userId}": {
+      "schema": "object",
+      "description": "Index of all registered user vaults for administrative visibility."
+    },
+    "payment_transactions/{txId}": {
+      "schema": "object",
+      "description": "Record of payment operations under Gateway simulation."
+    }
+  }
+}
