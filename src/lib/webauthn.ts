@@ -117,6 +117,8 @@ export async function registerBiometrics(
   const challenge = crypto.getRandomValues(new Uint8Array(32));
   const userId = crypto.getRandomValues(new Uint8Array(16));
 
+  const prfSalt = crypto.getRandomValues(new Uint8Array(32));
+
   const creationOptions: CredentialCreationOptions = {
     publicKey: {
       challenge,
@@ -139,7 +141,14 @@ export async function registerBiometrics(
         residentKey: "discouraged"
       },
       timeout: 60000,
-      attestation: "none"
+      attestation: "none",
+      extensions: {
+        prf: {
+          eval: {
+            first: prfSalt
+          }
+        }
+      } as any
     }
   };
 
@@ -150,11 +159,23 @@ export async function registerBiometrics(
       throw new Error("Biometric challenge was declined or timed out.");
     }
 
+    const extResults = credential.getClientExtensionResults() as any;
+    let hardwareEntropyBuffer = credential.rawId;
+
+    if (extResults.prf?.results?.first) {
+      hardwareEntropyBuffer = extResults.prf.results.first;
+    } else {
+      // Fallback or throw error if PRF extension is strictly required
+      console.warn("PRF extension not fully evaluated on create. Will attempt to use rawId (WARNING: removes cryptographic possession requirement)");
+      // Throwing error guarantees cryptographic possession requirement
+      throw new Error("Your hardware authenticator does not support or failed to evaluate WebAuthn PRF Entropy Binding. A cryptographically secure biometric lock cannot be established.");
+    }
+
     // 3. WebAuthn registration succeeded, now derive hardware-bound local key
-    // We import the high-entropy hardware credential rawId as keying material for HKDF
+    // We import the high-entropy PRF output as keying material for HKDF
     const hwKeyMaterial = await crypto.subtle.importKey(
       "raw",
-      credential.rawId,
+      hardwareEntropyBuffer,
       "HKDF",
       false,
       ["deriveKey"]
@@ -185,12 +206,14 @@ export async function registerBiometrics(
     const credIdStr = arrayBufferToBase64Url(credential.rawId);
     const ivStr = arrayBufferToBase64Url(iv.buffer);
     const encryptedSigStr = arrayBufferToBase64Url(encryptedData);
+    const prfSaltStr = arrayBufferToBase64Url(prfSalt.buffer);
 
     localStorage.setItem(`${STORAGE_PREFIX}cred_id_${vaultId}`, credIdStr);
     localStorage.setItem(`${STORAGE_PREFIX}iv_${vaultId}`, ivStr);
     localStorage.setItem(`${STORAGE_PREFIX}enc_sig_${vaultId}`, encryptedSigStr);
+    localStorage.setItem(`${STORAGE_PREFIX}prf_salt_${vaultId}`, prfSaltStr);
 
-    const hardwareEntropyHex = Array.from(new Uint8Array(credential.rawId))
+    const hardwareEntropyHex = Array.from(new Uint8Array(hardwareEntropyBuffer))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
@@ -203,7 +226,7 @@ export async function registerBiometrics(
     console.error("Biometric registration sequence exception:", err);
 
     if (err.message && err.message.includes("publickey-credentials-create")) {
-      throw new Error("Biometric hardware access is blocked in this preview sandbox. Please click 'Escape Iframe Sandbox (New Tab)' from the login screen or use the preview link in a new tab.");
+      throw new Error("Biometric hardware access is blocked by the browser in this iframe. Please open the app in a new tab to register biometric credentials.");
     }
     
     if (err.name === "NotAllowedError") {
@@ -223,6 +246,7 @@ export function removeBiometrics(vaultId: string): void {
   localStorage.removeItem(`${STORAGE_PREFIX}cred_id_${vaultId}`);
   localStorage.removeItem(`${STORAGE_PREFIX}iv_${vaultId}`);
   localStorage.removeItem(`${STORAGE_PREFIX}enc_sig_${vaultId}`);
+  localStorage.removeItem(`${STORAGE_PREFIX}prf_salt_${vaultId}`);
   localStorage.removeItem(`${STORAGE_PREFIX}local_key_${vaultId}`); // Clean up historical key tags if present
 }
 
@@ -233,6 +257,7 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
   const credIdStr = localStorage.getItem(`${STORAGE_PREFIX}cred_id_${vaultId}`);
   const ivStr = localStorage.getItem(`${STORAGE_PREFIX}iv_${vaultId}`);
   const encryptedSigStr = localStorage.getItem(`${STORAGE_PREFIX}enc_sig_${vaultId}`);
+  const prfSaltStr = localStorage.getItem(`${STORAGE_PREFIX}prf_salt_${vaultId}`);
 
   if (!credIdStr || !ivStr || !encryptedSigStr) {
     throw new Error("No biometrics link registered for this vault container.");
@@ -240,6 +265,7 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
   const credIdBuffer = base64UrlToArrayBuffer(credIdStr);
+  const prfSaltBuffer = prfSaltStr ? base64UrlToArrayBuffer(prfSaltStr) : crypto.getRandomValues(new Uint8Array(32));
 
   const assertionOptions: CredentialRequestOptions = {
     publicKey: {
@@ -251,7 +277,14 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
         }
       ],
       userVerification: "required",
-      timeout: 60000
+      timeout: 60000,
+      extensions: {
+        prf: {
+          eval: {
+            first: prfSaltBuffer
+          }
+        }
+      } as any
     }
   };
 
@@ -262,10 +295,22 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
       throw new Error("Biometric verification challenge cancelled.");
     }
 
-    // 2. Re-derive hardware-bound key using the high-entropy rawId retrieved after verified scan
+    const extResults = assertion.getClientExtensionResults() as any;
+    let hardwareEntropyBuffer = assertion.rawId;
+
+    if (extResults.prf?.results?.first) {
+      hardwareEntropyBuffer = extResults.prf.results.first;
+    } else if (prfSaltStr) {
+      // If we stored a salt but PRF didn't evaluate, it means the token doesn't support PRF or failed
+      // For strict cryptographic possession, we throw. 
+      // If PRF salt wasn't stored (legacy), we gracefully fallback to rawId.
+      throw new Error("Hardware authenticator failed PRF verification. Cryptographic token possession cannot be verified.");
+    }
+
+    // 2. Re-derive hardware-bound key using the high-entropy raw token or PRF retrieved after verified scan
     const hwKeyMaterial = await crypto.subtle.importKey(
       "raw",
-      assertion.rawId,
+      hardwareEntropyBuffer,
       "HKDF",
       false,
       ["deriveKey"]
@@ -296,7 +341,7 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
     const dec = new TextDecoder();
     const signature = dec.decode(decryptedBuffer);
 
-    const hardwareEntropyHex = Array.from(new Uint8Array(assertion.rawId))
+    const hardwareEntropyHex = Array.from(new Uint8Array(hardwareEntropyBuffer))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
@@ -308,7 +353,7 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
   } catch (err: any) {
     console.error("Biometric unlock assertion exception:", err);
     if (err.message && err.message.includes("publickey-credentials-get")) {
-      throw new Error("Biometric hardware access is blocked in this preview sandbox. Please click 'Escape Iframe Sandbox (New Tab)' from the login screen or use the preview link in a new tab.");
+      throw new Error("Biometric hardware access is blocked by the browser in this iframe. Please open the app in a new tab.");
     }
     if (err.name === "NotAllowedError") {
       throw new Error("Biometric unlock challenge was cancelled or verification failed.");

@@ -5,7 +5,8 @@ import {
   signInWithPopup as fbSignInWithPopup, 
   signOut as fbSignOut, 
   onAuthStateChanged as fbOnAuthStateChanged, 
-  User 
+  User,
+  deleteUser
 } from 'firebase/auth';
 import { 
   doc, 
@@ -918,7 +919,15 @@ export default function App() {
           await deleteDoc(doc(db, 'users', user.uid));
         } catch (e) { console.warn("Failed to wipe user profile", e); }
 
-        notify("Emergency wipe complete. Resetting environment.", 'success');
+        // 7. Delete Auth user and sign out
+        try {
+          if (auth.currentUser) await deleteUser(auth.currentUser);
+        } catch (e) {
+          console.warn("Failed to delete auth user, trying to sign out anyway", e);
+          try { await fbSignOut(auth); } catch (e2) { console.warn(e2); }
+        }
+
+        notify("Emergency wipe complete. Session terminated.", 'success');
         setTimeout(() => window.location.reload(), 2000);
       } catch (e) {
         console.error(e);
@@ -1231,7 +1240,7 @@ export default function App() {
                   className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-4 rounded-apex transition-all border border-slate-750"
                 >
                   <LogOut className="h-3.5 w-3.5" />
-                  Close Console
+                  Logout
                 </button>
               </div>
             </header>
@@ -1338,6 +1347,7 @@ export default function App() {
                     setScreen('vault');
                   }}
                   onLogout={logout}
+                  onFallbackToQA={() => setScreen('verify')}
                 />
               </motion.div>
             )}
@@ -1455,6 +1465,22 @@ export default function App() {
 
 function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupBlockedIndicator, networkErrorIndicator, onAdminClick, theme, onToggleTheme }: { onLogin: () => void, onSandboxLogin: () => void, onShowGuide: () => void, loginPending?: boolean, popupBlockedIndicator: boolean, networkErrorIndicator: boolean, onAdminClick?: () => void, theme?: 'light' | 'dark', onToggleTheme?: () => void, key?: string }) {
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const [isSandboxMode, setIsSandboxMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+    }
+    return false;
+  });
+
+  const toggleSandboxMode = () => {
+    const newVal = !isSandboxMode;
+    setIsSandboxMode(newVal);
+    if (newVal) {
+      localStorage.setItem('whyor_vault_sandbox_active', 'true');
+    } else {
+      localStorage.removeItem('whyor_vault_sandbox_active');
+    }
+  };
 
   return (
     <motion.div 
@@ -1561,7 +1587,7 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
               </div>
             )}
  
-            {isIframe && !popupBlockedIndicator && !networkErrorIndicator && (
+            {isSandboxMode && isIframe && !popupBlockedIndicator && !networkErrorIndicator && (
               <div className="mb-6 p-3 rounded-lg bg-indigo-950/25 border border-indigo-500/10 text-left text-slate-400 text-xs leading-relaxed flex flex-col sm:flex-row items-center justify-between gap-3 is_iframe_badge">
                 <div className="flex items-center gap-2 font-sans">
                   <Fingerprint className="h-4 w-4 text-indigo-400 animate-pulse shrink-0" />
@@ -1589,43 +1615,50 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
               </div>
             )}
             
-            <button 
-              onClick={onLogin}
-              disabled={loginPending}
-              className={`w-full bg-indigo-600 text-white py-4 rounded-lg font-bold flex items-center justify-center gap-3 hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-900/40 active:translate-y-1 ${loginPending ? 'opacity-70 cursor-not-allowed' : ''}`}
-            >
-              {loginPending ? (
-                <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-              ) : (
-                <LogIn className="h-5 w-5" />
-              )}
-              {loginPending ? "Establishing Connection..." : "Sign in with Google"}
-            </button>
-
-            <div className="relative my-6 flex items-center justify-center">
-              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                <div className="w-full border-t border-slate-800/80" />
+            <div className="mb-6 p-4 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] uppercase tracking-widest font-bold text-slate-500 mb-1">Environment</span>
+                <span className={`text-xs font-bold ${isSandboxMode ? 'text-amber-400' : 'text-indigo-400'}`}>
+                  {isSandboxMode ? 'Sandbox Mode' : 'Production Mode'}
+                </span>
               </div>
-              <div className="relative flex justify-center text-xs uppercase z-10">
-                <span className="bg-slate-900 px-3 text-slate-500 font-mono tracking-widest text-[9px]">OR</span>
-              </div>
+              <button
+                type="button"
+                onClick={toggleSandboxMode}
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isSandboxMode ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                role="switch"
+                aria-checked={isSandboxMode}
+              >
+                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isSandboxMode ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={onSandboxLogin}
-              className="w-full border border-amber-500/30 hover:border-amber-500/60 bg-amber-950/20 hover:bg-amber-950/40 text-amber-200 py-3.5 rounded-lg flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-950/30"
-            >
-              <Cpu className="h-4 w-4 text-amber-500 animate-pulse animate-duration-1000 shrink-0" />
-              <span>Launch Sandbox Guest Session</span>
-            </button>
+            {isSandboxMode ? (
+              <button
+                type="button"
+                onClick={onSandboxLogin}
+                className="w-full border border-amber-500/30 hover:border-amber-500/60 bg-amber-950/20 hover:bg-amber-950/40 text-amber-200 py-4 rounded-lg flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-950/30"
+              >
+                <Cpu className="h-5 w-5 text-amber-500 animate-pulse animate-duration-1000 shrink-0" />
+                <span>Launch Sandbox Guest Session</span>
+              </button>
+            ) : (
+              <button 
+                onClick={onLogin}
+                disabled={loginPending}
+                className={`w-full bg-indigo-600 text-white py-4 rounded-lg font-bold flex items-center justify-center gap-3 hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-900/40 active:translate-y-1 ${loginPending ? 'opacity-70 cursor-not-allowed' : ''}`}
+              >
+                {loginPending ? (
+                  <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <LogIn className="h-5 w-5" />
+                )}
+                {loginPending ? "Establishing Connection..." : "Sign in with Google"}
+              </button>
+            )}
           </div>
 
-          <div className="mt-8 border-t border-slate-800/60 pt-6">
-            <DatabaseStatus variant="detailed" />
-          </div>
-
-          {onAdminClick && (
+          {isSandboxMode && onAdminClick && (
             <div className="flex justify-center pt-5 border-t border-slate-800/40 mt-5">
               <button
                 type="button"
@@ -2238,7 +2271,7 @@ SAFEKEEPING PROTOCOL:
                title="Cancel Setup & Sign Out"
              >
                <LogOut className="h-3 w-3" />
-               Cancel
+               Logout
              </button>
            </div>
         </div>
@@ -2266,7 +2299,7 @@ SAFEKEEPING PROTOCOL:
                   onClick={onLogout}
                   className="w-full py-3 bg-slate-950/40 border border-slate-800/85 text-slate-400 hover:text-white rounded-xl font-bold hover:bg-slate-900 transition-all text-xs tracking-widest uppercase"
                 >
-                  Cancel & Sign Out
+                  Logout
                 </button>
               </div>
             </div>
@@ -2720,6 +2753,8 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
   const [attempt, setAttempt] = useState(config.failedAttempts);
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [biometricError, setBiometricError] = useState<string | null>(null);
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const isSandbox = typeof window !== 'undefined' && localStorage.getItem('whyor_vault_sandbox_active') === 'true';
 
   useEffect(() => {
     async function check() {
@@ -2950,7 +2985,10 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
         logVaultAction(vaultId, actor, AuditAction.LOGIN_FAIL, AuditResourceType.VAULT, vaultId, "Vault corrupted after 3 failed sequences.")
           .catch(e => console.warn("Failed login audit logging failed:", e));
       }
-      onCorrupt();
+      notify("Maximum failed challenge sequences. Redirecting to Master Key fallback...", "error");
+      setTimeout(() => {
+        onCorrupt(); // Switch to corrupted screen mode
+      }, 1500);
     } else {
       updateDoc(doc(db, 'vaults', vaultId, 'vault', 'config'), updates)
         .catch(e => handleFirestoreError(e, OperationType.UPDATE, 'vault/config'));
@@ -3008,11 +3046,16 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
                  type="button"
                  disabled={loading}
                  onClick={handleBiometricUnlock}
-                 className="w-full mt-4 py-3.5 bg-indigo-500/20 border border-indigo-500/30 hover:bg-indigo-500 hover:text-white text-indigo-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 text-xs uppercase tracking-widest shadow-lg shadow-indigo-950"
+                 className="w-full mt-4 py-3.5 bg-indigo-500/20 border border-indigo-500/30 hover:bg-indigo-500 hover:text-white text-indigo-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 text-xs uppercase tracking-widest shadow-lg shadow-indigo-950 disabled:opacity-50 disabled:cursor-not-allowed"
                >
                  <Fingerprint className="h-4 w-4" />
                  {loading ? "Authenticating..." : "Scan Biometric Device"}
                </button>
+               {isSandbox && isIframe && (
+                 <p className="text-[10px] text-amber-500 font-mono mt-2 uppercase text-center border border-amber-500/20 bg-amber-500/10 rounded-md p-2">
+                   Hardware Biometrics may be blocked inside sandbox iframes. Escape iframe for full support.
+                 </p>
+               )}
                {biometricError && (
                  <p className="text-[9px] text-red-400 font-mono mt-2 uppercase text-center">{biometricError}</p>
                )}
@@ -3092,12 +3135,8 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
               className="w-full py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-300 transition-all flex items-center justify-center gap-2"
             >
               <LogOut className="h-3 w-3" />
-              Abort Protocol
+              Logout
             </button>
-          </div>
-
-          <div className="mt-8 pt-6 border-t border-slate-800">
-            <DatabaseStatus variant="detailed" />
           </div>
         </div>
       </div>
@@ -3105,7 +3144,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
   );
 }
 
-function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout }: { config: VaultConfig, userId: string, vaultId: string, onRecover: (key: CryptoKey, entries: DecryptedItem[], signature?: string, answers?: string[]) => void, onLogout: () => void, key?: string }) {
+function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallbackToQA }: { config: VaultConfig, userId: string, vaultId: string, onRecover: (key: CryptoKey, entries: DecryptedItem[], signature?: string, answers?: string[]) => void, onLogout: () => void, onFallbackToQA: () => void, key?: string }) {
   const [authMode, setAuthMode] = useState<'master_key' | 'sss'>('master_key');
   const [masterKey, setMasterKey] = useState('');
   const [share1, setShare1] = useState('');
@@ -3224,8 +3263,9 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout }: { con
             if (config.encryptedAnswersEscrow) {
               recoveredAnswers = await decrypt(config.encryptedAnswersEscrow, escrowKey, "escrow-answers-binding");
             }
-          } catch (escrowErr) {
+          } catch (escrowErr: any) {
             console.error("Cryptographic escrow decryption exception:", escrowErr);
+            notify("Master Key mapped but Escrow Decryption failed: " + (escrowErr?.message || escrowErr), "error");
           }
         }
 
@@ -3233,8 +3273,10 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout }: { con
           notify("Vault credentials verified. Decryption escrow retrieved! Entering vault...", "success");
           onRecover(recoveredSessionKey, [], recoveredSignature, recoveredAnswers || undefined);
         } else {
-          notify("Vault recovered and uncorrupted. Please login with security challenge questions.", "success");
-          window.location.reload(); 
+          notify("Legacy Vault restriction: Master Key verified, but older vaults do not contain the escrow feature. You must fulfill the 10 QA to mathematically derive your session key. If you forgot the answers, the vault is unrecoverable.", "error");
+          setTimeout(() => {
+            onFallbackToQA();
+          }, 6000);
         }
       } else {
         // INCREMENT INCORRECT ATTEMPTS TARGET (MAX 2 ATTEMPTS TO SELF-DESTRUCT)
@@ -3377,10 +3419,6 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout }: { con
             {loading ? 'Re-integrating cryptographic layers...' : 'Authorize Vault Re-entry'}
           </button>
            
-          <div className="mt-8 pt-6 border-t border-slate-800/80">
-            <DatabaseStatus variant="detailed" />
-          </div>
-           
           {error && (
             <motion.p 
               initial={{ opacity: 0, y: 5 }} 
@@ -3394,9 +3432,10 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout }: { con
          
         <button 
           onClick={onLogout}
-          className="mt-8 text-xs font-bold text-slate-500 uppercase tracking-widest hover:text-slate-400 transition-all cursor-pointer block w-full text-center"
+          className="mt-8 flex items-center justify-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-widest hover:text-slate-300 transition-all cursor-pointer w-full"
         >
-          Terminate current session
+          <LogOut className="h-3 w-3" />
+          Logout
         </button>
 
         <EmergencyWipeButton />
@@ -4339,6 +4378,8 @@ function SettingsModal({
   const [showNewDuressKey, setShowNewDuressKey] = useState(false);
 
   const isPrimaryOwner = userId === vaultId || userId === vaultConfig.ownerId;
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+  const isSandbox = typeof window !== 'undefined' && localStorage.getItem('whyor_vault_sandbox_active') === 'true';
 
   useEffect(() => {
     async function check() {
@@ -4451,14 +4492,14 @@ function SettingsModal({
       }
 
       // 2. Transcribe and decrypt escrowed answers on-device using old key
-      if (!vaultConfig.encryptedAnswersEscrow) {
-        throw new Error("Answers escrow mapping is absent in configurations.");
-      }
-      const oldEscrowKey = await deriveKey(cleanCurrent, vaultConfig.masterKeySalt);
-      const answers = await decrypt(vaultConfig.encryptedAnswersEscrow, oldEscrowKey, "escrow-answers-binding");
+      let answers: any = null;
+      if (vaultConfig.encryptedAnswersEscrow) {
+        const oldEscrowKey = await deriveKey(cleanCurrent, vaultConfig.masterKeySalt);
+        answers = await decrypt(vaultConfig.encryptedAnswersEscrow, oldEscrowKey, "escrow-answers-binding");
 
-      if (!answers) {
-        throw new Error("Unable to decrypt zero-knowledge answers with current master key context.");
+        if (!answers) {
+          throw new Error("Unable to decrypt zero-knowledge answers with current master key context.");
+        }
       }
 
       // 3. Encrypt and wrap new credential layers
@@ -4475,7 +4516,13 @@ function SettingsModal({
         newMastKeySalt = generateSalt();
         const newEscrowKey = await deriveKey(cleanNew, newMastKeySalt);
         newEncryptedSignatureEscrow = await encrypt(combinedSignature, newEscrowKey, "escrow-signature-binding");
-        newEncryptedAnswersEscrow = await encrypt(answers, newEscrowKey, "escrow-answers-binding");
+        
+        if (answers) {
+          newEncryptedAnswersEscrow = await encrypt(answers, newEscrowKey, "escrow-answers-binding");
+        } else {
+          newEncryptedAnswersEscrow = vaultConfig.encryptedAnswersEscrow; // Keep undefined if it was
+        }
+        
         newHashedMasterKey = await hashMasterKey(cleanNew, newMastKeySalt);
       }
 
@@ -4485,14 +4532,20 @@ function SettingsModal({
 
       // 4. Submit update to database storage layer
       const configRef = doc(db, 'vaults', vaultId, 'vault', 'config');
-      await updateDoc(configRef, {
+      
+      const payload: any = {
         masterKeySalt: newMastKeySalt,
         hashedMasterKey: newHashedMasterKey,
         hashedDuressKey: newHashedDuressKey || '',
         masterKeyFailedAttempts: 0,
         encryptedSignatureEscrow: newEncryptedSignatureEscrow,
-        encryptedAnswersEscrow: newEncryptedAnswersEscrow
-      }).catch(e => handleFirestoreError(e, OperationType.UPDATE, 'vaults/' + vaultId + '/vault/config'));
+      };
+      
+      if (newEncryptedAnswersEscrow !== undefined) {
+        payload.encryptedAnswersEscrow = newEncryptedAnswersEscrow;
+      }
+      
+      await updateDoc(configRef, payload).catch(e => handleFirestoreError(e, OperationType.UPDATE, 'vaults/' + vaultId + '/vault/config'));
 
       // 5. Build and log audit trail records
       const actor = auth.currentUser;
@@ -4891,23 +4944,30 @@ function SettingsModal({
             </div>
 
             {isSupported && (
-              <div className="flex gap-4">
-                {isRegistered ? (
-                  <button
-                    disabled={loading}
-                    onClick={handleRemove}
-                    className="w-full py-4 bg-red-950/40 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-900 hover:text-white transition-all text-xs uppercase tracking-widest"
-                  >
-                    {loading ? "Processing..." : "Unlink Biometrics"}
-                  </button>
-                ) : (
-                  <button
-                    disabled={loading}
-                    onClick={handleRegister}
-                    className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all text-xs uppercase tracking-widest shadow-lg shadow-indigo-900/40"
-                  >
-                    {loading ? "Registering with Hardware Key..." : "Link This Device (Hardware Biometrics)"}
-                  </button>
+              <div className="flex flex-col gap-4">
+                <div className="flex gap-4">
+                  {isRegistered ? (
+                    <button
+                      disabled={loading}
+                      onClick={handleRemove}
+                      className="w-full py-4 bg-red-950/40 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-900 hover:text-white transition-all text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading ? "Processing..." : "Unlink Biometrics"}
+                    </button>
+                  ) : (
+                    <button
+                      disabled={loading}
+                      onClick={handleRegister}
+                      className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all text-xs uppercase tracking-widest shadow-lg shadow-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loading ? "Registering with Hardware Key..." : "Link This Device (Hardware Biometrics)"}
+                    </button>
+                  )}
+                </div>
+                {isSandbox && isIframe && (
+                  <p className="text-[10px] text-amber-500 font-mono uppercase text-center border border-amber-500/20 bg-amber-500/10 rounded-md p-2">
+                    Hardware Biometrics may be blocked inside sandbox iframes. Escape iframe for full support.
+                  </p>
                 )}
               </div>
             )}
