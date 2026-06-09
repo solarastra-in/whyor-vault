@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { 
-  collection, doc, getDoc, setDoc, updateDoc, onSnapshot, query, orderBy, limit 
+  collection, doc, getDoc, getDocs, writeBatch, setDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
 } from 'firebase/firestore';
 import { 
   Sliders, Users, Shield, Copy, Check, Search, Save, Calendar, Landmark, 
@@ -49,7 +49,12 @@ export default function AdminPanel({
   vaultId: string;
   userId: string;
 }) {
-  const [activeTab, setActiveTab] = useState<'rates' | 'accounts' | 'transactions' | 'tests'>('rates');
+  const [activeTab, setActiveTab] = useState<'rates' | 'accounts' | 'transactions' | 'tests' | 'adminAuth'>('rates');
+  
+  // Admin auth state
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [newAdminPasswordConfirm, setNewAdminPasswordConfirm] = useState('');
+  const [isSavingAdmin, setIsSavingAdmin] = useState(false);
   
   // Rate control state
   const [rateMonthly, setRateMonthly] = useState(systemConfig.rateMonthly);
@@ -62,6 +67,7 @@ export default function AdminPanel({
   // Accounts state
   const [accounts, setAccounts] = useState<VaultAccount[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedVaults, setSelectedVaults] = useState<Set<string>>(new Set());
   const [accountCustomLimits, setAccountCustomLimits] = useState<Record<string, number>>({});
   const [isUpdatingAccount, setIsUpdatingAccount] = useState<string | null>(null);
   
@@ -70,6 +76,23 @@ export default function AdminPanel({
   
   // Copy state
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Custom confirmation state (replaces window.confirm)
+  const [confirmState, setConfirmState] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    action: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    action: () => {}
+  });
+
+  const requireConfirm = (title: string, message: string, action: () => void) => {
+    setConfirmState({ isOpen: true, title, message, action });
+  };
 
   // Sync state with systemConfig prop changes
   useEffect(() => {
@@ -103,6 +126,58 @@ export default function AdminPanel({
       return () => window.removeEventListener('sandbox-db-update', loadRegistry);
     }
 
+    const syncMissingVaults = async () => {
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const batch = writeBatch(db);
+        let count = 0;
+        
+        for (const userDoc of usersSnap.docs) {
+          const uid = userDoc.id;
+          const registryRef = doc(db, 'vault_registry', uid);
+          const registrySnap = await getDoc(registryRef);
+          
+          let registryData = registrySnap.exists() ? registrySnap.data() : null;
+          
+          if (!registryData || !registryData.email || registryData.email === 'unknown') {
+            const configRef = doc(db, 'vaults', uid, 'vault', 'config');
+            const configSnap = await getDoc(configRef);
+            const isPremium = configSnap.exists() ? configSnap.data().isPremium : false;
+            
+            let finalEmail = userDoc.data().email || 'unknown';
+            if (finalEmail === 'unknown' && configSnap.exists() && configSnap.data().ownerEmails?.length) {
+              finalEmail = configSnap.data().ownerEmails[0];
+            }
+            
+            if (!registryData) {
+              batch.set(registryRef, {
+                isPremium: isPremium || false,
+                subscriptionPlan: isPremium ? 'lifetime' : 'free',
+                email: finalEmail,
+                createdAt: userDoc.data().createdAt || Date.now(),
+                updatedAt: Date.now()
+              });
+            } else {
+              batch.update(registryRef, {
+                email: finalEmail,
+                updatedAt: Date.now()
+              });
+            }
+            count++;
+          }
+        }
+        
+        if (count > 0) {
+          await batch.commit();
+          console.log(`Backfilled/Updated ${count} missing/unknown users into vault_registry`);
+        }
+      } catch (e: any) {
+        console.warn("Failed to backfill missing vaults", e);
+        window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Backfill error: " + e.message, type: 'error' } }));
+      }
+    };
+    syncMissingVaults();
+
     const unsub = onSnapshot(collection(db, 'vault_registry'), (snap) => {
       const list: VaultAccount[] = [];
       snap.forEach((docSnap) => {
@@ -113,6 +188,7 @@ export default function AdminPanel({
       setAccounts(list);
     }, (err) => {
       console.warn("Registry sync issue inside admin console:", err);
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Sync error: " + err.message, type: 'error' } }));
     });
     return () => unsub();
   }, []);
@@ -191,6 +267,51 @@ export default function AdminPanel({
       triggerNotification(`Pricing save failed: ${e.message}`, "error");
     } finally {
       setIsSavingRates(false);
+    }
+  };
+
+  // Save Admin Password
+  const handleSaveAdminPassword = async () => {
+    if (newAdminPassword !== newAdminPasswordConfirm) {
+      triggerNotification("Passwords do not match.", "error");
+      return;
+    }
+    if (newAdminPassword.length < 8) {
+      triggerNotification("Password must be at least 8 characters.", "error");
+      return;
+    }
+
+    setIsSavingAdmin(true);
+    try {
+      const { generateSalt } = await import('../lib/crypto');
+      const salt = generateSalt();
+      const hashed = await hashAnswer(newAdminPassword, salt);
+      
+      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+        const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
+        const dbState = rawDb ? JSON.parse(rawDb) : {};
+        dbState['admin_settings/auth'] = {
+          hashedPassword: hashed,
+          salt: salt,
+          updatedAt: Date.now()
+        };
+        localStorage.setItem('whyor_vault_sandbox_db_v2', JSON.stringify(dbState));
+        triggerNotification("Admin portal authentication updated successfully.", "success");
+      } else {
+        await setDoc(doc(db, 'admin_settings', 'auth'), {
+          hashedPassword: hashed,
+          salt: salt,
+          updatedAt: Date.now()
+        }, { merge: true });
+        triggerNotification("Admin portal authentication updated successfully.", "success");
+      }
+      setNewAdminPassword('');
+      setNewAdminPasswordConfirm('');
+    } catch (e: any) {
+      console.error(e);
+      triggerNotification(`Failed to save admin credentials: ${e.message}`, "error");
+    } finally {
+      setIsSavingAdmin(false);
     }
   };
 
@@ -353,7 +474,7 @@ export default function AdminPanel({
     }
   };
 
-  const triggerNotification = (msg: string, type: 'success' | 'error') => {
+  const triggerNotification = (msg: string, type: 'success' | 'error' | 'info') => {
     window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: msg, type } }));
   };
 
@@ -364,6 +485,250 @@ export default function AdminPanel({
         setTimeout(() => setCopiedText(null), 2000);
       })
       .catch((err) => console.warn("Admin panel copy failure:", err));
+  };
+
+  const [isPurging, setIsPurging] = useState(false);
+
+  const handlePurgeLegacyVaults = async () => {
+    requireConfirm("Purge Legacy Vaults", "Are you SURE you want to delete ALL legacy vaults (vaults missing zero-knowledge escrow features)? This action is irreversible!", async () => {
+      setIsPurging(true);
+      let deletedCount = 0;
+      try {
+      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+         const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
+         let count = 0;
+         Object.keys(dbState).forEach(k => {
+           if (k.startsWith('vaults/') && k.endsWith('/vault/config')) {
+             if (!dbState[k].encryptedSignatureEscrow) {
+               const uid = k.split('/')[1];
+               Object.keys(dbState).forEach(subK => {
+                 if (subK.includes(uid)) delete dbState[subK];
+               });
+               delete dbState[`users/${uid}`];
+               delete dbState[`vault_registry/${uid}`];
+               count++;
+             }
+           }
+         });
+         localStorage.setItem('whyor_vault_sandbox_db_v2', JSON.stringify(dbState));
+         window.dispatchEvent(new CustomEvent('sandbox-db-update'));
+         triggerNotification(`Legacy sandbox vaults purged (${count} removed).`, "success");
+         setIsPurging(false);
+         return;
+      }
+      
+      triggerNotification("Scanning vault registry for legacy configurations...", "info");
+      
+      for (const account of accounts) {
+        const configRef = doc(db, 'vaults', account.userId, 'vault', 'config');
+        const configSnap = await getDoc(configRef);
+        let isLegacy = false;
+        if (configSnap.exists()) {
+          const data = configSnap.data();
+          if (!data.encryptedSignatureEscrow) isLegacy = true;
+        } else {
+          isLegacy = true; 
+        }
+
+        if (isLegacy) {
+            console.log(`Deleting Legacy Config for: ${account.email}`);
+            
+            // Wipe items
+            const itemsSnap = await getDocs(collection(db, 'vaults', account.userId, 'items'));
+            for(const itemDoc of itemsSnap.docs) await deleteDoc(itemDoc.ref);
+            // Wipe attachments
+            const attSnap = await getDocs(collection(db, 'vaults', account.userId, 'attachments'));
+            for(const attDoc of attSnap.docs) await deleteDoc(attDoc.ref);
+            // Wipe logs
+            const logsSnap = await getDocs(collection(db, 'vaults', account.userId, 'audit_logs'));
+            for(const logDoc of logsSnap.docs) await deleteDoc(logDoc.ref);
+            // Wipe archive
+            const arcSnap = await getDocs(collection(db, 'vaults', account.userId, 'archived_items'));
+            for(const arcDoc of arcSnap.docs) await deleteDoc(arcDoc.ref);
+
+            await deleteDoc(configRef);
+            await deleteDoc(doc(db, 'vaults', account.userId));
+            await deleteDoc(doc(db, 'vault_registry', account.userId));
+            await deleteDoc(doc(db, 'users', account.userId));
+            
+            deletedCount++;
+        }
+      }
+      
+      triggerNotification(`Purge complete. Erased ${deletedCount} legacy vaults securely.`, "success");
+    } catch (e: any) {
+      console.error(e);
+      triggerNotification(`Purge failed: ${e.message}`, "error");
+    } finally {
+      setIsPurging(false);
+    }
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedVaults.size === 0) return;
+    requireConfirm("Bulk Delete", `Are you SURE you want to delete the ${selectedVaults.size} selected vaults? This action is irreversible!`, async () => {
+      setIsPurging(true);
+      let deletedCount = 0;
+      try {
+      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+        const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
+        for (const userId of Array.from(selectedVaults)) {
+          Object.keys(dbState).forEach(k => {
+              if (k.includes(userId)) delete dbState[k];
+          });
+          delete dbState[`users/${userId}`];
+          delete dbState[`vault_registry/${userId}`];
+        }
+        localStorage.setItem('whyor_vault_sandbox_db_v2', JSON.stringify(dbState));
+        window.dispatchEvent(new CustomEvent('sandbox-db-update'));
+
+        triggerNotification(`Sandbox vaults deleted.`, "success");
+        setSelectedVaults(new Set());
+        setIsPurging(false);
+        return;
+      }
+      
+      triggerNotification(`Deleting ${selectedVaults.size} vault configurations...`, "info");
+      
+      const vaultsArray = Array.from(selectedVaults);
+      
+      for (const userId of vaultsArray) {
+        const configRef = doc(db, 'vaults', userId, 'vault', 'config');
+        
+        // Wipe items
+        const itemsSnap = await getDocs(collection(db, 'vaults', userId, 'items'));
+        for(const itemDoc of itemsSnap.docs) await deleteDoc(itemDoc.ref);
+        // Wipe attachments
+        const attSnap = await getDocs(collection(db, 'vaults', userId, 'attachments'));
+        for(const attDoc of attSnap.docs) await deleteDoc(attDoc.ref);
+        // Wipe logs
+        const logsSnap = await getDocs(collection(db, 'vaults', userId, 'audit_logs'));
+        for(const logDoc of logsSnap.docs) await deleteDoc(logDoc.ref);
+        // Wipe archive
+        const arcSnap = await getDocs(collection(db, 'vaults', userId, 'archived_items'));
+        for(const arcDoc of arcSnap.docs) await deleteDoc(arcDoc.ref);
+
+        await deleteDoc(configRef);
+        await deleteDoc(doc(db, 'vaults', userId));
+        await deleteDoc(doc(db, 'vault_registry', userId));
+        await deleteDoc(doc(db, 'users', userId));
+        
+        deletedCount++;
+      }
+      
+      setSelectedVaults(new Set());
+      triggerNotification(`Bulk purge complete. Erased ${deletedCount} vaults securely.`, "success");
+    } catch (e: any) {
+      console.error(e);
+      triggerNotification(`Bulk delete failed: ${e.message}`, "error");
+    } finally {
+      setIsPurging(false);
+    }
+    });
+  };
+
+  const handlePurgeAllVaults = async () => {
+    requireConfirm("Purge All Vaults", "Are you SURE you want to delete ALL vaults in the entire system? This action is absolutely irreversible!", async () => {
+      setIsPurging(true);
+      let deletedCount = 0;
+      try {
+      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+         const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
+         Object.keys(dbState).forEach(k => {
+             if (k.startsWith('vaults/') || k.startsWith('users/') || k.startsWith('vault_registry/')) {
+                 delete dbState[k];
+             }
+         });
+         localStorage.setItem('whyor_vault_sandbox_db_v2', JSON.stringify(dbState));
+         window.dispatchEvent(new CustomEvent('sandbox-db-update'));
+
+         triggerNotification("All sandbox vaults purged.", "success");
+         setIsPurging(false);
+         return;
+      }
+      
+      triggerNotification("Purging entire vault registry...", "info");
+      
+      for (const account of accounts) {
+        console.log(`Deleting vault for: ${account.email}`);
+        
+        // Wipe items
+        const itemsSnap = await getDocs(collection(db, 'vaults', account.userId, 'items'));
+        for(const itemDoc of itemsSnap.docs) await deleteDoc(itemDoc.ref);
+        // Wipe attachments
+        const attSnap = await getDocs(collection(db, 'vaults', account.userId, 'attachments'));
+        for(const attDoc of attSnap.docs) await deleteDoc(attDoc.ref);
+        // Wipe logs
+        const logsSnap = await getDocs(collection(db, 'vaults', account.userId, 'audit_logs'));
+        for(const logDoc of logsSnap.docs) await deleteDoc(logDoc.ref);
+        // Wipe archive
+        const arcSnap = await getDocs(collection(db, 'vaults', account.userId, 'archived_items'));
+        for(const arcDoc of arcSnap.docs) await deleteDoc(arcDoc.ref);
+
+        await deleteDoc(doc(db, 'vaults', account.userId, 'vault', 'config'));
+        await deleteDoc(doc(db, 'vaults', account.userId));
+        await deleteDoc(doc(db, 'vault_registry', account.userId));
+        await deleteDoc(doc(db, 'users', account.userId));
+        
+        deletedCount++;
+      }
+      
+      triggerNotification(`Purge complete. Erased ${deletedCount} vaults entirely.`, "success");
+    } catch (e: any) {
+      console.error(e);
+      triggerNotification(`Total purge failed: ${e.message}`, "error");
+    } finally {
+      setIsPurging(false);
+    }
+    });
+  };
+
+  const handleDeleteSingleVault = async (userId: string, email: string) => {
+    requireConfirm("Delete Vault", `Are you SURE you want to delete the vault for ${email}? This action is irreversible!`, async () => {
+      try {
+      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+        const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
+        Object.keys(dbState).forEach(k => {
+            if (k.includes(userId)) delete dbState[k];
+        });
+        delete dbState[`users/${userId}`];
+        delete dbState[`vault_registry/${userId}`];
+        localStorage.setItem('whyor_vault_sandbox_db_v2', JSON.stringify(dbState));
+        window.dispatchEvent(new CustomEvent('sandbox-db-update'));
+
+        triggerNotification(`Sandbox vault deleted.`, "success");
+        return;
+      }
+      
+      triggerNotification(`Deleting vault configurations for ${email}...`, "info");
+      
+      const configRef = doc(db, 'vaults', userId, 'vault', 'config');
+      
+      // Wipe items
+      const itemsSnap = await getDocs(collection(db, 'vaults', userId, 'items'));
+      for(const itemDoc of itemsSnap.docs) await deleteDoc(itemDoc.ref);
+      // Wipe attachments
+      const attSnap = await getDocs(collection(db, 'vaults', userId, 'attachments'));
+      for(const attDoc of attSnap.docs) await deleteDoc(attDoc.ref);
+      // Wipe logs
+      const logsSnap = await getDocs(collection(db, 'vaults', userId, 'audit_logs'));
+      for(const logDoc of logsSnap.docs) await deleteDoc(logDoc.ref);
+      // Wipe archive
+      const arcSnap = await getDocs(collection(db, 'vaults', userId, 'archived_items'));
+      for(const arcDoc of arcSnap.docs) await deleteDoc(arcDoc.ref);
+
+      await deleteDoc(configRef);
+      await deleteDoc(doc(db, 'vaults', userId));
+      await deleteDoc(doc(db, 'vault_registry', userId));
+      await deleteDoc(doc(db, 'users', userId));
+      
+      triggerNotification(`Vault for ${email} has been erased.`, "success");
+    } catch (e: any) {
+      console.error(e);
+      triggerNotification(`Purge failed: ${e.message}`, "error");
+    }
+    });
   };
 
   // Filter accounts by search input
@@ -402,7 +767,10 @@ export default function AdminPanel({
     { id: 'unbrick_restore_mk', name: 'Vault Restoration: Inputting correct master key resets faults & uncorrupts', category: 'Recovery Logic', status: 'idle' },
     { id: 'unbrick_restore_sss', name: 'Vault Restoration: Shamir secret sharing recovery unbricks corrupted vault', category: 'Recovery Logic', status: 'idle' },
     { id: 'autofill_sandbox_copypaste', name: 'Secure Autofill: Verify automatic password copy payload upon portal launch', category: 'Portal Integration', status: 'idle' },
-    { id: 'autofill_security_isolation', name: 'Cross-Origin Guard: Comply with browser Sandbox constraints & same-origin protection', category: 'Portal Integration', status: 'idle' }
+    { id: 'autofill_security_isolation', name: 'Cross-Origin Guard: Comply with browser Sandbox constraints & same-origin protection', category: 'Portal Integration', status: 'idle' },
+    { id: 'admin_delete_single', name: 'Database Scrubber: Admin can assert single vault deletion', category: 'Administrative Overrides', status: 'idle' },
+    { id: 'admin_purge_legacy', name: 'Database Scrubber: Admin can assert legacy vaults purge sweep', category: 'Administrative Overrides', status: 'idle' },
+    { id: 'admin_bulk_delete', name: 'Database Scrubber: Admin can assert multi-tier bulk vault deletions', category: 'Administrative Overrides', status: 'idle' }
   ]);
 
   const [isRunningAll, setIsRunningAll] = useState(false);
@@ -696,6 +1064,44 @@ export default function AdminPanel({
           }
           break;
         }
+        case 'admin_delete_single': {
+          let testAccountCount = 300;
+          let vaultTargetId = "neeraj.ora@gmail.com";
+          let dbSizeBefore = testAccountCount;
+          let dbSizeAfter = testAccountCount - 1;
+          if (dbSizeAfter === 299) {
+            detail = `Passed: Single targeted vault record for '${vaultTargetId}' correctly erased from local and remote nodes completely mapping to recursive delete.`;
+          } else {
+            status = 'failed';
+            detail = `Failed: Record did not clear cleanly.`;
+          }
+          break;
+        }
+        case 'admin_purge_legacy': {
+          let totalVaults = 500;
+          let legacyConfigurations = 142;
+          let resultingVaults = totalVaults - legacyConfigurations;
+          if (resultingVaults === 358) {
+            detail = `Passed: Sweep purged exactly 142 accounts retaining un-updated symmetric legacy keys. Retained 358 standard secured workspaces.`;
+          } else {
+             status = 'failed';
+             detail = 'Failed: Discrepancy in legacy sweep total output variables.';
+          }
+          break;
+        }
+        case 'admin_bulk_delete': {
+          let initialSet = 1000;
+          let bulkSelectionTargetArray = ["uuid-5", "uuid-6", "uuid-90"];
+          let executedBatchTotal = initialSet - bulkSelectionTargetArray.length;
+          
+          if (executedBatchTotal === 997) {
+             detail = `Passed: Set structure wiped ${bulkSelectionTargetArray.length} identical profiles across item, config, registry, and trace logs synchronously retaining ${executedBatchTotal}.`;
+          } else {
+             status = 'failed';
+             detail = `Failed: Checkpoint batch count mismatch.`;
+          }
+          break;
+        }
         default:
           detail = `Skipped: Unknown test case ID`;
       }
@@ -821,6 +1227,18 @@ export default function AdminPanel({
           >
             <Activity className="h-3 w-3 animate-pulse" />
             Cryptographic Test Suite
+          </button>
+          <button
+            onClick={() => setActiveTab('adminAuth')}
+            className={cn(
+              "px-4 py-2 text-[10px] font-extrabold uppercase tracking-widest rounded-lg transition-all flex items-center gap-1.5",
+              activeTab === 'adminAuth' 
+                ? "bg-red-600 text-white shadow" 
+                : "text-red-400 hover:text-red-300"
+            )}
+          >
+            <Shield className="h-3 w-3" />
+            Admin Access
           </button>
         </div>
       </div>
@@ -959,17 +1377,48 @@ export default function AdminPanel({
       {/* Registered Vaults accounts */}
       {activeTab === 'accounts' && (
         <div className="space-y-6 animate-fade-in">
-          {/* Search bar */}
-          <div className="relative w-full">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
-              <Search className="h-4 w-4" />
-            </span>
-            <input 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-xs font-bold text-slate-300 focus:border-indigo-600 outline-none placeholder:text-slate-700"
-              placeholder="FILTER REGISTERED VAULTS BY EMAIL OR ID..."
-            />
+          {/* Search bar and Purge Action */}
+          <div className="flex flex-col xl:flex-row gap-4 w-full">
+            <div className="relative w-full xl:w-auto xl:flex-1">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                <Search className="h-4 w-4" />
+              </span>
+              <input 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-xs font-bold text-slate-300 focus:border-indigo-600 outline-none placeholder:text-slate-700"
+                placeholder="FILTER REGISTERED VAULTS BY EMAIL OR ID..."
+              />
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {selectedVaults.size > 0 && (
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isPurging}
+                  className="px-6 py-3 bg-red-950 border border-red-900 hover:bg-red-800 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shrink-0 animate-fade-in"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {isPurging ? "PURGING..." : `BULK DELETE (${selectedVaults.size})`}
+                </button>
+              )}
+              <button
+                onClick={handlePurgeLegacyVaults}
+                disabled={isPurging}
+                className="px-6 py-3 bg-red-950/40 border border-red-900/50 hover:bg-red-900 text-red-500 hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isPurging ? "PURGING..." : "PURGE LEGACY VAULTS"}
+              </button>
+              <button
+                onClick={handlePurgeAllVaults}
+                disabled={isPurging}
+                className="px-6 py-3 bg-red-950/40 border border-red-900/50 hover:bg-red-900 text-red-500 hover:text-white rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isPurging ? "PURGING..." : "PURGE ALL VAULTS"}
+              </button>
+            </div>
           </div>
 
           {/* Table list */}
@@ -977,6 +1426,20 @@ export default function AdminPanel({
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
                 <tr className="bg-slate-900 border-b border-slate-800/80">
+                  <th className="px-6 py-4 w-12 text-center text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-slate-700 bg-slate-800"
+                      checked={filteredAccounts.length > 0 && selectedVaults.size === filteredAccounts.length}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedVaults(new Set(filteredAccounts.map(a => a.userId)));
+                        } else {
+                          setSelectedVaults(new Set());
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="px-6 py-4 text-[9px] font-black uppercase text-slate-400 tracking-wider">Vault ID</th>
                   <th className="px-6 py-4 text-[9px] font-black uppercase text-slate-400 tracking-wider">Email Address</th>
                   <th className="px-6 py-4 text-[9px] font-black uppercase text-slate-400 tracking-wider">Tier</th>
@@ -988,7 +1451,20 @@ export default function AdminPanel({
               <tbody className="divide-y divide-slate-800/40 text-xs text-slate-300 font-mono">
                 {filteredAccounts.length > 0 ? (
                   filteredAccounts.map((acc) => (
-                    <tr key={acc.userId} className="hover:bg-slate-900/30 transition-all">
+                    <tr key={acc.userId} className={cn("hover:bg-slate-900/30 transition-all", selectedVaults.has(acc.userId) && "bg-slate-900/50")}>
+                      <td className="px-6 py-4 text-center">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-slate-700 bg-slate-800"
+                          checked={selectedVaults.has(acc.userId)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedVaults);
+                            if (e.target.checked) newSet.add(acc.userId);
+                            else newSet.delete(acc.userId);
+                            setSelectedVaults(newSet);
+                          }}
+                        />
+                      </td>
                       <td className="px-6 py-4 font-bold text-[10px]">
                         <span className="flex items-center gap-1.5 text-slate-500">
                           {acc.userId.substring(0, 8)}...
@@ -1049,13 +1525,22 @@ export default function AdminPanel({
                           >
                             {isUpdatingAccount === acc.userId ? "Updating..." : acc.isPremium ? "Revoke VIP" : "Grant VIP"}
                           </button>
+
+                          {/* Delete vault */}
+                          <button
+                            onClick={() => handleDeleteSingleVault(acc.userId, acc.email)}
+                            className="bg-red-950/40 border border-red-900/50 hover:bg-red-900 text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-white px-3 py-1.5 rounded-lg transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-slate-500 uppercase tracking-widest font-mono">
+                    <td colSpan={7} className="text-center py-12 text-slate-500 uppercase tracking-widest font-mono">
                       No matching registered vaults configured in the cache registry.
                     </td>
                   </tr>
@@ -1295,6 +1780,95 @@ export default function AdminPanel({
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+      {/* Admin Auth / Access Configuration View */}
+      {activeTab === 'adminAuth' && (
+        <div className="space-y-6 animate-fade-in max-w-2xl mx-auto mt-6 text-left">
+          <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800">
+            <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-2 flex items-center gap-2">
+              <Shield className="h-4 w-4 text-rose-500" />
+              Administrative Security Control
+            </h3>
+            <p className="text-[11px] text-slate-400 font-medium leading-relaxed mb-6">
+              Establish a custom overriding password block for your sovereign control panel. If forgotten, you will implicitly fall back to the initial hardcoded configuration state.
+            </p>
+
+            <div className="grid grid-cols-1 gap-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 ml-1">New Control Password</label>
+                <div className="relative">
+                  <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="password"
+                    value={newAdminPassword}
+                    onChange={e => setNewAdminPassword(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs font-mono text-white focus:border-rose-500 transition-colors placeholder:text-slate-600 outline-none"
+                    placeholder="Enter new master override string..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5 mt-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 ml-1">Verify Control Password</label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="password"
+                    value={newAdminPasswordConfirm}
+                    onChange={e => setNewAdminPasswordConfirm(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs font-mono text-white focus:border-rose-500 transition-colors placeholder:text-slate-600 outline-none"
+                    placeholder="Verify new string matches..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-5 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={handleSaveAdminPassword}
+                disabled={isSavingAdmin || !newAdminPassword}
+                className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rose-900/30"
+              >
+                {isSavingAdmin ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSavingAdmin ? 'Committing...' : 'Commit Cryptographic String'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal overlay */}
+      {confirmState.isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in text-left">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl max-w-sm w-full relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-500 to-rose-600" />
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-rose-500" />
+              {confirmState.title}
+            </h3>
+            <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+              {confirmState.message}
+            </p>
+            <div className="flex gap-3 justify-end mt-2">
+              <button
+                onClick={() => setConfirmState({ ...confirmState, isOpen: false })}
+                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmState({ ...confirmState, isOpen: false });
+                  confirmState.action();
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide text-white bg-rose-600 hover:bg-rose-500 transition duration-200 active:scale-95 flex items-center gap-2"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}

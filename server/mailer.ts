@@ -2,9 +2,6 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Default API Key supplied specifically for this applet
-const DEF_API_KEY = "a6d12a214167ac734ee42dbfbca655ca-us14";
-
 export interface MailRecipient {
   email: string;
   name?: string;
@@ -25,7 +22,7 @@ export interface MailOptions {
  */
 export async function sendMailchimpEmail(options: MailOptions): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
-    const apiKey = process.env.MAILCHIMP_API_KEY || DEF_API_KEY;
+    const apiKey = process.env.MAILCHIMP_API_KEY || "";
     const fromEmail = options.fromEmail || process.env.MAILCHIMP_FROM_EMAIL || "vault@whyorvault.com";
     const fromName = options.fromName || process.env.MAILCHIMP_FROM_NAME || "WhyOr Vault Escrow Core";
 
@@ -33,6 +30,21 @@ export async function sendMailchimpEmail(options: MailOptions): Promise<{ succes
     const toArr: MailRecipient[] = Array.isArray(options.to)
       ? options.to
       : [{ email: options.to, type: "to" }];
+
+    if (!apiKey || apiKey === "a6d12a214167ac734ee42dbfbca655ca-us14") {
+      console.log("\n📬 ======= SIMULATED EMAIL DISPATCH (NO API KEY CONFIG) =======");
+      console.log(`TO:      ${toArr.map(r => r.email).join(", ")}`);
+      console.log(`FROM:    ${fromName} <${fromEmail}>`);
+      console.log(`SUBJECT: ${options.subject}`);
+      const cleanText = options.html ? options.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : "";
+      console.log(`CONTENT EXCEL: ${cleanText}`);
+      console.log("==================================================================\n");
+      
+      return { 
+        success: true, 
+        data: [{ email: toArr[0]?.email || "unknown", status: "sent", simulated: true }] 
+      };
+    }
 
     // Prepare JSON payload for Mandrill messages/send endpoint
     const payload = {

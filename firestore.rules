@@ -35,13 +35,25 @@ service cloud.firestore {
     function isAdmin() {
       return isSignedIn() && (
         ("email" in request.auth.token && request.auth.token.email == "solarastra.in@gmail.com") ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/admin_sessions/$(request.auth.uid))
       );
+    }
+
+    match /admin_sessions/{sessionId} {
+      allow read, delete: if isSignedIn() && request.auth.uid == sessionId;
+      allow create: if isSignedIn() && request.auth.uid == sessionId && request.resource.data.secretKey == "admin_portal_secret_2026_xYz";
     }
 
     // Admins Collection
     match /admins/{adminId} {
       allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Admin Settings (e.g. for hashed password)
+    match /admin_settings/{document} {
+      allow read: if true;
       allow write: if isAdmin();
     }
 
@@ -69,6 +81,7 @@ service cloud.firestore {
     // Connection Probe document
     match /vaults/{vaultId} {
       allow get: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     // Vault Configuration
@@ -111,7 +124,7 @@ service cloud.firestore {
           (isOwner(vaultId) && incoming().diff(existing()).affectedKeys().hasOnly(['masterKeySalt', 'hashedMasterKey', 'hashedDuressKey', 'masterKeyFailedAttempts', 'encryptedSignatureEscrow', 'encryptedAnswersEscrow']))
         );
 
-      allow delete: if isOwner(vaultId);
+      allow delete: if isOwner(vaultId) || isAdmin();
     }
 
     // Vault Items
@@ -127,7 +140,7 @@ service cloud.firestore {
         );
       }
 
-      allow list, get: if canAccessVault();
+      allow list, get: if canAccessVault() || isAdmin();
       allow create: if canAccessVault() && 
         incoming().ownerId == request.auth.uid &&
         incoming().encryptedData is string &&
@@ -135,7 +148,7 @@ service cloud.firestore {
       allow update: if canAccessVault() && 
         incoming().ownerId == existing().ownerId &&
         incoming().diff(existing()).affectedKeys().hasOnly(['encryptedData', 'type', 'name', 'updatedAt']);
-      allow delete: if canAccessVault();
+      allow delete: if canAccessVault() || isAdmin();
     }
 
     // Vault Attachments
@@ -151,11 +164,11 @@ service cloud.firestore {
         );
       }
 
-      allow list, get: if canAccessVault();
+      allow list, get: if canAccessVault() || isAdmin();
       allow create: if canAccessVault() && 
         incoming().encryptedPayload is string &&
         incoming().encryptedPayload.size() <= 10485760; // Up to 10MB
-      allow update, delete: if canAccessVault();
+      allow update, delete: if canAccessVault() || isAdmin();
     }
 
     // Audit Logs
@@ -171,7 +184,8 @@ service cloud.firestore {
         );
       }
 
-      allow list, get: if canAccessAudit();
+      allow list, get: if canAccessAudit() || isAdmin();
+      allow delete: if isAdmin();
       allow create: if canAccessAudit() &&
         (incoming().timestamp is int || incoming().timestamp is float) &&
         incoming().actorId == request.auth.uid &&
@@ -183,7 +197,7 @@ service cloud.firestore {
           incoming().actorEmail == request.auth.token.email ||
           incoming().actorEmail.lower() == request.auth.token.email.lower()
         );
-      allow delete: if isOwner(vaultId);
+      allow delete: if isOwner(vaultId) || isAdmin();
       allow update: if false;
     }
 
@@ -200,13 +214,14 @@ service cloud.firestore {
         );
       }
       allow create: if canWriteArchive();
-      allow list, get: if canWriteArchive();
-      allow delete: if isOwner(vaultId);
+      allow list, get: if canWriteArchive() || isAdmin();
+      allow delete: if isOwner(vaultId) || isAdmin();
     }
 
     // User Profile (for activeVaultId pointer)
     match /users/{userId} {
-      allow get, create, update, delete: if isOwner(userId);
+      allow list, get: if isAdmin();
+      allow get, create, update, delete: if isOwner(userId) || isAdmin();
     }
 
     // Dynamic Handshake Tokens

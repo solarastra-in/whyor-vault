@@ -946,6 +946,19 @@ export default function App() {
       setLoading(true);
       if (u) {
         setUser(u);
+        
+        if (u.email === 'solarastra.in@gmail.com') {
+          setScreen(prev => {
+            // If they are already in the admin flow, let it be.
+            if (prev === 'admin_dashboard' || prev === 'admin_login') {
+              return prev;
+            }
+            return 'admin_login';
+          });
+          setLoading(false);
+          return;
+        }
+
         try {
           // Check terms acceptance
           const userRef = doc(db, 'users', u.uid);
@@ -1204,7 +1217,9 @@ export default function App() {
         {screen === 'admin_login' && (
           <AdminLoginScreen 
             onLoginSuccess={() => setScreen('admin_dashboard')}
-            onBackToCustomerLogin={() => setScreen('auth')}
+            onBackToCustomerLogin={() => {
+              logout();
+            }}
           />
         )}
 
@@ -1236,7 +1251,7 @@ export default function App() {
                   {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
                 </button>
                 <button
-                  onClick={() => setScreen('auth')}
+                  onClick={logout}
                   className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-4 rounded-apex transition-all border border-slate-750"
                 >
                   <LogOut className="h-3.5 w-3.5" />
@@ -1658,7 +1673,7 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
             )}
           </div>
 
-          {isSandboxMode && onAdminClick && (
+          {onAdminClick && (
             <div className="flex justify-center pt-5 border-t border-slate-800/40 mt-5">
               <button
                 type="button"
@@ -1767,20 +1782,51 @@ function AdminLoginScreen({
     const targetEmail = 'solarastra.in@gmail.com';
     const cleanUsername = username.trim().toLowerCase();
 
-    if (cleanUsername === targetEmail && password === 'admin-portal-key') {
-      setLoading(true);
+    if (!username || !password) {
+      setError('Staff identification and authorization parameters represent vital metadata.');
+      return;
+    }
+
+    if (cleanUsername !== targetEmail) {
+      setError('AUTHORIZATION REFUSED: Cryptographic signature mismatch or incorrect parameters.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let isValid = false;
       try {
+        const adminAuthRef = doc(db, 'admin_settings', 'auth');
+        const adminAuthSnap = await getDoc(adminAuthRef);
+        
+        if (adminAuthSnap.exists()) {
+          const { hashedPassword, salt } = adminAuthSnap.data();
+          const inputHash = await hashAnswer(password, salt);
+          if (inputHash === hashedPassword) {
+            isValid = true;
+          }
+        } else {
+          if (password === 'admin-portal-key') {
+            isValid = true;
+          }
+        }
+      } catch (dbErr) {
+        // Fallback safely if network disconnected or rules lag
+        if (password === 'admin-portal-key') {
+          isValid = true;
+        }
+      }
+
+      if (isValid) {
         await triggerMfaDispatch(targetEmail);
         setStage('mfa');
-      } catch (err: any) {
-        setError('Failed to dispatch MFA override packet: ' + err.message);
-      } finally {
-        setLoading(false);
+      } else {
+        setError('AUTHORIZATION REFUSED: Cryptographic signature mismatch or incorrect parameters.');
       }
-    } else if (!username || !password) {
-      setError('Staff identification and authorization parameters represent vital metadata.');
-    } else {
-      setError('AUTHORIZATION REFUSED: Cryptographic signature mismatch or incorrect parameters.');
+    } catch (err: any) {
+      setError('Failed to dispatch MFA override packet: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1789,15 +1835,30 @@ function AdminLoginScreen({
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      if (mfaCode.trim() === generatedMfa && generatedMfa !== '') {
+    if (mfaCode.trim() === generatedMfa && generatedMfa !== '') {
+      try {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        
+        const result = await fbSignInWithPopup(auth, provider);
+        const email = result.user.email;
+        
+        if (email === 'solarastra.in@gmail.com') {
+          setLoading(false);
+          onLoginSuccess();
+        } else {
+          setLoading(false);
+          setError('Google Account verified does not match the Admin Configuration. Please use solarastra.in@gmail.com.');
+        }
+      } catch (err: any) {
+        console.error("Popup Error:", err);
         setLoading(false);
-        onLoginSuccess();
-      } else {
-        setLoading(false);
-        setError('INVALID MFA TOKEN: Administrative authentication signature rejected.');
+        setError('Firebase Authentication failed: ' + err.message);
       }
-    }, 1000);
+    } else {
+      setLoading(false);
+      setError('INVALID MFA TOKEN: Administrative authentication signature rejected.');
+    }
   };
 
   const handleResendMfa = async () => {
@@ -2214,6 +2275,15 @@ SAFEKEEPING PROTOCOL:
       };
 
       await setDoc(configRef, configPayload).catch(e => handleFirestoreError(e, OperationType.CREATE, 'vault/config'));
+      
+      const registryRef = doc(db, 'vault_registry', user.uid);
+      await setDoc(registryRef, {
+        isPremium: false,
+        subscriptionPlan: 'free',
+        email: user.email || 'unknown',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }).catch(e => console.warn("Failed to update vault registry index:", e));
       
       await logVaultAction(user.uid, user, AuditAction.CREATE, AuditResourceType.VAULT, user.uid, "Phase 1: Vault Genesis Protocol Completed with Duress support.");
       
