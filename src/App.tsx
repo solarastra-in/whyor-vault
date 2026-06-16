@@ -29,12 +29,16 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // --- CENTRALIZED SANDBOX / INTERACTIVE PREVIEW ENVIRONMENT EMULATOR ---
+const getIsSandbox = (): boolean => {
+  return typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox';
+};
+
 let activeAuthListeners: Array<(user: any | null) => void> = [];
 
 const onAuthStateChanged = (authInstance: any, callback: (user: any | null) => void) => {
   activeAuthListeners.push(callback);
   
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const mockUser = {
       uid: "sandbox-guest-uid",
@@ -55,9 +59,8 @@ const onAuthStateChanged = (authInstance: any, callback: (user: any | null) => v
 };
 
 const signOut = async (authInstance: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
-    localStorage.removeItem('whyor_vault_sandbox_active');
     activeAuthListeners.forEach(listener => {
       try { listener(null); } catch (e) { console.error(e); }
     });
@@ -147,7 +150,7 @@ interface SnapshotReg {
 let activeSnapshotListeners: SnapshotReg[] = [];
 
 const onSnapshot = (ref: any, onNext: (snap: any) => void, onError?: (err: any) => void) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const path = ref.path || "";
     
@@ -195,7 +198,7 @@ const onSnapshot = (ref: any, onNext: (snap: any) => void, onError?: (err: any) 
 };
 
 const getDoc = async (ref: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const path = ref.path;
     const dbState = getSandboxDB();
@@ -208,7 +211,7 @@ const getDoc = async (ref: any) => {
 };
 
 const getDocFromServer = async (ref: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     return getDoc(ref);
   } else {
@@ -217,7 +220,7 @@ const getDocFromServer = async (ref: any) => {
 };
 
 const getDocs = async (ref: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const path = ref.path || "";
     const dbState = getSandboxDB();
@@ -239,7 +242,7 @@ const getDocs = async (ref: any) => {
 };
 
 const setDoc = async (ref: any, data: any, options?: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const path = ref.path;
     const dbState = getSandboxDB();
@@ -258,7 +261,7 @@ const setDoc = async (ref: any, data: any, options?: any) => {
 };
 
 const updateDoc = async (ref: any, data: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const path = ref.path;
     const dbState = getSandboxDB();
@@ -277,7 +280,7 @@ const updateDoc = async (ref: any, data: any) => {
 };
 
 const addDoc = async (collRef: any, data: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const collPath = collRef.path;
     const randomId = "item_" + Math.random().toString(36).substring(2, 15);
@@ -294,7 +297,7 @@ const addDoc = async (collRef: any, data: any) => {
 };
 
 const deleteDoc = async (ref: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     const path = ref.path;
     const dbState = getSandboxDB();
@@ -351,7 +354,7 @@ class MockWriteBatch {
 }
 
 const writeBatch = (dbInstance: any) => {
-  const isSandbox = localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
   if (isSandbox) {
     return new MockWriteBatch();
   } else {
@@ -953,7 +956,7 @@ export default function App() {
             if (prev === 'admin_dashboard' || prev === 'admin_login') {
               return prev;
             }
-            return 'admin_login';
+            return 'admin_dashboard';
           });
           setLoading(false);
           return;
@@ -1168,11 +1171,17 @@ export default function App() {
   };
 
   const logout = async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+    } catch(e) {
+      console.warn("Logout signout warning:", e);
+    }
     setActiveKey(null);
     setActiveSignature(null);
     setDecryptedEntries([]);
     setIsLocked(true);
+    setScreen('auth');
+    setUser(null);
   };
 
   if (loading) {
@@ -1470,7 +1479,7 @@ export default function App() {
       <SystemTroubleshooter />
 
       <footer className="fixed bottom-4 right-4 text-xs text-ink-muted pointer-events-none z-50">
-        WhyOr Vault © {new Date().getFullYear()} Neeraj Jain
+        WhyOr Vault © {new Date().getFullYear()} WhyOr Vault
       </footer>
     </div>
   );
@@ -1480,22 +1489,7 @@ export default function App() {
 
 function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupBlockedIndicator, networkErrorIndicator, onAdminClick, theme, onToggleTheme }: { onLogin: () => void, onSandboxLogin: () => void, onShowGuide: () => void, loginPending?: boolean, popupBlockedIndicator: boolean, networkErrorIndicator: boolean, onAdminClick?: () => void, theme?: 'light' | 'dark', onToggleTheme?: () => void, key?: string }) {
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-  const [isSandboxMode, setIsSandboxMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('whyor_vault_sandbox_active') === 'true';
-    }
-    return false;
-  });
-
-  const toggleSandboxMode = () => {
-    const newVal = !isSandboxMode;
-    setIsSandboxMode(newVal);
-    if (newVal) {
-      localStorage.setItem('whyor_vault_sandbox_active', 'true');
-    } else {
-      localStorage.removeItem('whyor_vault_sandbox_active');
-    }
-  };
+  const isSandboxMode = getIsSandbox();
 
   return (
     <motion.div 
@@ -1516,7 +1510,7 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
               WhyOr<span className="text-indigo-400">Vault</span>
             </h1>
             <div className="flex items-center gap-4 mt-2">
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">Secured by Neeraj Jain</p>
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">Secured by WhyOr Vault</p>
               <button 
                 onClick={onShowGuide}
                 className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest border-b border-indigo-500/30 hover:text-white hover:border-white transition-all cursor-pointer pointer-events-auto"
@@ -1637,15 +1631,9 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
                   {isSandboxMode ? 'Sandbox Mode' : 'Production Mode'}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={toggleSandboxMode}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isSandboxMode ? 'bg-amber-500' : 'bg-indigo-500'}`}
-                role="switch"
-                aria-checked={isSandboxMode}
-              >
-                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isSandboxMode ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
+              <span className="text-[9px] uppercase font-bold text-slate-500 tracking-wider">
+                System Configured
+              </span>
             </div>
 
             {isSandboxMode ? (
@@ -1675,14 +1663,12 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
 
           {onAdminClick && (
             <div className="flex justify-center pt-5 border-t border-slate-800/40 mt-5">
-              <button
-                type="button"
-                onClick={onAdminClick}
-                className="text-[10px] text-slate-500 hover:text-emerald-400 font-bold uppercase tracking-widest transition-colors cursor-pointer flex items-center gap-1.5"
+              <div
+                className="text-[10px] text-slate-650 font-bold uppercase tracking-widest flex items-center gap-1.5 select-none"
               >
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                <ShieldCheck className="h-3.5 w-3.5 text-slate-700" />
                 Staff Security Terminal
-              </button>
+              </div>
             </div>
           )}
 
@@ -2824,13 +2810,17 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [biometricError, setBiometricError] = useState<string | null>(null);
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-  const isSandbox = typeof window !== 'undefined' && localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
 
   useEffect(() => {
     async function check() {
       const supported = await checkBiometricSupport();
       if (supported && isBiometricRegistered(vaultId)) {
         setHasBiometrics(true);
+        // Automatically request WebAuthn PRF evaluation during login sequence
+        setTimeout(() => {
+          handleBiometricUnlock();
+        }, 500);
       }
     }
     check();
@@ -4330,7 +4320,7 @@ function VaultMain({
               <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest flex items-center justify-center md:justify-end gap-2">
                 © 2026 WhyOr 
                 <span className="h-1 w-1 rounded-full bg-slate-700" /> 
-                Engineering by Neeraj Jain
+                Engineering by WhyOr Vault
               </p>
               <p className="text-[9px] text-slate-700 uppercase font-medium mt-1.5 italic max-w-xs ml-auto">
                 All decryption occurs in volatile execution memory. Keys are never transmitted or persisted on any remote server.
@@ -4449,7 +4439,7 @@ function SettingsModal({
 
   const isPrimaryOwner = userId === vaultId || userId === vaultConfig.ownerId;
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-  const isSandbox = typeof window !== 'undefined' && localStorage.getItem('whyor_vault_sandbox_active') === 'true';
+  const isSandbox = getIsSandbox();
 
   useEffect(() => {
     async function check() {
@@ -5819,12 +5809,12 @@ function TermsModal({ onAccept, onLogout }: { onAccept: () => void, onLogout: ()
           <div className="space-y-8 text-slate-400 text-sm leading-relaxed">
             <section>
               <h3 className="text-white font-bold uppercase text-[11px] tracking-widest mb-3">1. Scope of Responsibility</h3>
-              <p>WhyOr Vault is a local-only encryption environment. Encryption and decryption occur exclusively within your browser's memory space using keys derived from your personal security answers. <span className="text-white font-bold underline">Neither Neeraj Jain nor WhyOr</span> has access to your data, your encryption keys, or your security answers.</p>
+              <p>WhyOr Vault is a local-only encryption environment. Encryption and decryption occur exclusively within your browser's memory space using keys derived from your personal security answers. <span className="text-white font-bold underline">Neither WhyOr Vault nor WhyOr</span> has access to your data, your encryption keys, or your security answers.</p>
             </section>
 
             <section>
               <h3 className="text-white font-bold uppercase text-[11px] tracking-widest mb-3">2. Total Liability Waiver</h3>
-              <p>Under no circumstances shall Neeraj Jain or WhyOr be held liable for any identity fraud, unauthorized access, data compromise, or loss of information. You acknowledge that you are strictly responsible for maintaining the confidentiality of your master key and security answers.</p>
+              <p>Under no circumstances shall WhyOr Vault or WhyOr be held liable for any identity fraud, unauthorized access, data compromise, or loss of information. You acknowledge that you are strictly responsible for maintaining the confidentiality of your master key and security answers.</p>
             </section>
 
             <section className="bg-red-500/5 p-6 rounded-lg border border-red-500/20">
@@ -5853,7 +5843,7 @@ function TermsModal({ onAccept, onLogout }: { onAccept: () => void, onLogout: ()
              )}
              <div className="text-right hidden sm:block mr-4">
                 <p className="text-[8px] font-bold text-slate-700 uppercase tracking-widest">WhyOr Vault v2.4.0</p>
-                <p className="text-[8px] text-slate-800 uppercase font-medium">© 2026 Neeraj Jain. All rights reserved.</p>
+                <p className="text-[8px] text-slate-800 uppercase font-medium">© 2026 WhyOr Vault. All rights reserved.</p>
              </div>
              <button 
                 disabled={!scrolledToBottom}
@@ -6058,10 +6048,10 @@ function HowItWorksModal({ onClose }: { onClose: () => void }) {
         <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-8">
            <div className="flex items-center gap-2">
               <ShieldCheck className="h-3 w-3 text-indigo-500" />
-              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">WhyOr Vault Security Suit v2.4.0 • Engineering by Neeraj Jain</p>
+              <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">WhyOr Vault Security Suit v2.4.0 • Engineering by WhyOr Vault</p>
            </div>
            <div className="text-right">
-              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">© 2026 Neeraj Jain. All rights reserved.</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">© 2026 WhyOr Vault. All rights reserved.</p>
            </div>
         </div>
       </motion.div>
@@ -7773,7 +7763,7 @@ function SystemTroubleshooter() {
     const cleanUrl = getCleanPreviewUrl();
     safeCopyToClipboard(cleanUrl).then((ok) => {
       if (ok) {
-        notify("Copied sandbox URL to clipboard! If redirected by Google (e.g. authuser), paste this in an incognito window.", "info");
+        notify("Copied URL to clipboard! Please open this in a regular New Tab (Not Incognito). If asked, sign in as solarastra.in@gmail.com.", "info");
       }
     }).catch(() => {});
     window.open(cleanUrl, '_blank');

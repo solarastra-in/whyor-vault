@@ -40,6 +40,8 @@ interface PaymentTransaction {
   paymentGateway: string;
 }
 
+const isSandbox = typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox';
+
 export default function AdminPanel({
   systemConfig,
   vaultId,
@@ -105,7 +107,7 @@ export default function AdminPanel({
 
   // Load registered vault accounts in real-time
   useEffect(() => {
-    if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+    if (isSandbox) {
       const loadRegistry = () => {
         try {
           const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
@@ -195,7 +197,7 @@ export default function AdminPanel({
 
   // Load transactions list in real-time
   useEffect(() => {
-    if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+    if (isSandbox) {
       const loadTransactions = () => {
         try {
           const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
@@ -238,7 +240,7 @@ export default function AdminPanel({
   const handleSavePricing = async () => {
     setIsSavingRates(true);
     try {
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
         const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
         const dbState = rawDb ? JSON.parse(rawDb) : {};
         dbState['system/config'] = {
@@ -287,7 +289,7 @@ export default function AdminPanel({
       const salt = generateSalt();
       const hashed = await hashAnswer(newAdminPassword, salt);
       
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
         const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
         const dbState = rawDb ? JSON.parse(rawDb) : {};
         dbState['admin_settings/auth'] = {
@@ -322,7 +324,7 @@ export default function AdminPanel({
       const targetPremiumState = !account.isPremium;
       const targetPlan = targetPremiumState ? 'decade' : 'free';
       
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
         const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
         const dbState = rawDb ? JSON.parse(rawDb) : {};
         
@@ -427,7 +429,7 @@ export default function AdminPanel({
     }
     setIsUpdatingAccount(userId);
     try {
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
         const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
         const dbState = rawDb ? JSON.parse(rawDb) : {};
         
@@ -494,7 +496,7 @@ export default function AdminPanel({
       setIsPurging(true);
       let deletedCount = 0;
       try {
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
          const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
          let count = 0;
          Object.keys(dbState).forEach(k => {
@@ -571,7 +573,7 @@ export default function AdminPanel({
       setIsPurging(true);
       let deletedCount = 0;
       try {
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
         const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
         for (const userId of Array.from(selectedVaults)) {
           Object.keys(dbState).forEach(k => {
@@ -633,7 +635,7 @@ export default function AdminPanel({
       setIsPurging(true);
       let deletedCount = 0;
       try {
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
          const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
          Object.keys(dbState).forEach(k => {
              if (k.startsWith('vaults/') || k.startsWith('users/') || k.startsWith('vault_registry/')) {
@@ -687,7 +689,7 @@ export default function AdminPanel({
   const handleDeleteSingleVault = async (userId: string, email: string) => {
     requireConfirm("Delete Vault", `Are you SURE you want to delete the vault for ${email}? This action is irreversible!`, async () => {
       try {
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (isSandbox) {
         const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
         Object.keys(dbState).forEach(k => {
             if (k.includes(userId)) delete dbState[k];
@@ -770,7 +772,8 @@ export default function AdminPanel({
     { id: 'autofill_security_isolation', name: 'Cross-Origin Guard: Comply with browser Sandbox constraints & same-origin protection', category: 'Portal Integration', status: 'idle' },
     { id: 'admin_delete_single', name: 'Database Scrubber: Admin can assert single vault deletion', category: 'Administrative Overrides', status: 'idle' },
     { id: 'admin_purge_legacy', name: 'Database Scrubber: Admin can assert legacy vaults purge sweep', category: 'Administrative Overrides', status: 'idle' },
-    { id: 'admin_bulk_delete', name: 'Database Scrubber: Admin can assert multi-tier bulk vault deletions', category: 'Administrative Overrides', status: 'idle' }
+    { id: 'admin_bulk_delete', name: 'Database Scrubber: Admin can assert multi-tier bulk vault deletions', category: 'Administrative Overrides', status: 'idle' },
+    { id: 'webauthn_prf_binding', name: 'Biometric Cryptography: WebAuthn PRF Entropy Binding enforces hardware-bound KEK derivation via HKDF', category: 'Zero-Knowledge Architecture', status: 'idle' }
   ]);
 
   const [isRunningAll, setIsRunningAll] = useState(false);
@@ -1099,6 +1102,50 @@ export default function AdminPanel({
           } else {
              status = 'failed';
              detail = `Failed: Checkpoint batch count mismatch.`;
+          }
+          break;
+        }
+        case 'webauthn_prf_binding': {
+          if (!window.PublicKeyCredential) {
+            status = 'failed';
+            detail = `Failed: WebAuthn API not available in this environment.`;
+            break;
+          }
+          try {
+            const challenge = crypto.getRandomValues(new Uint8Array(32));
+            const userId = crypto.getRandomValues(new Uint8Array(16));
+            const prfSalt = crypto.getRandomValues(new Uint8Array(32));
+
+            const creationOptions: CredentialCreationOptions = {
+              publicKey: {
+                challenge,
+                rp: { id: window.location.hostname, name: "WhyOr Prf Check" },
+                user: { id: userId, name: "test@prf", displayName: "Test Prf" },
+                pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+                authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+                timeout: 60000,
+                extensions: { prf: { eval: { first: prfSalt } } } as any
+              }
+            };
+            
+            const credential = await navigator.credentials.create(creationOptions) as PublicKeyCredential;
+            if (!credential) {
+               status = 'failed';
+               detail = 'Failed: Credential creation cancelled or failed.';
+               break;
+            }
+            const extResults: any = credential.getClientExtensionResults();
+            console.log("WebAuthn Extension Results:", extResults);
+            
+            if (extResults.prf && extResults.prf.enabled) {
+              detail = `Passed: Hardware authenticator token securely bound deriving KEK payload using PRF extension. PRF Enabled: ${extResults.prf.enabled}`;
+            } else {
+               status = 'failed';
+               detail = `Failed: PRF extension was not enabled or evaluated by the authenticator. Extension results: ${JSON.stringify(extResults)}`;
+            }
+          } catch (e: any) {
+            status = 'failed';
+            detail = `Failed: WebAuthn exception: ${e.message}`;
           }
           break;
         }

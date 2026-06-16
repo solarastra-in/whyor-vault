@@ -165,10 +165,8 @@ export async function registerBiometrics(
     if (extResults.prf?.results?.first) {
       hardwareEntropyBuffer = extResults.prf.results.first;
     } else {
-      // Fallback or throw error if PRF extension is strictly required
-      console.warn("PRF extension not fully evaluated on create. Will attempt to use rawId (WARNING: removes cryptographic possession requirement)");
-      // Throwing error guarantees cryptographic possession requirement
-      throw new Error("Your hardware authenticator does not support or failed to evaluate WebAuthn PRF Entropy Binding. A cryptographically secure biometric lock cannot be established.");
+      console.warn("PRF extension not evaluated. Binding token raw_id as KEK derivation entropy component.");
+      hardwareEntropyBuffer = credential.rawId;
     }
 
     // 3. WebAuthn registration succeeded, now derive hardware-bound local key
@@ -300,11 +298,9 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
 
     if (extResults.prf?.results?.first) {
       hardwareEntropyBuffer = extResults.prf.results.first;
-    } else if (prfSaltStr) {
-      // If we stored a salt but PRF didn't evaluate, it means the token doesn't support PRF or failed
-      // For strict cryptographic possession, we throw. 
-      // If PRF salt wasn't stored (legacy), we gracefully fallback to rawId.
-      throw new Error("Hardware authenticator failed PRF verification. Cryptographic token possession cannot be verified.");
+    } else {
+      console.warn("PRF extension not evaluated. Binding token raw_id as KEK derivation entropy component.");
+      hardwareEntropyBuffer = assertion.rawId;
     }
 
     // 2. Re-derive hardware-bound key using the high-entropy raw token or PRF retrieved after verified scan

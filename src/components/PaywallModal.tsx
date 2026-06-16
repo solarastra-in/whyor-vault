@@ -99,7 +99,7 @@ export default function PaywallModal({
       const generatedTxId = 'TX_SIM_' + Math.random().toString(36).substring(2, 15).toUpperCase();
       setTransactionId(generatedTxId);
       
-      if (localStorage.getItem('whyor_vault_sandbox_active') === 'true') {
+      if (typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox') {
         const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
         const dbState = rawDb ? JSON.parse(rawDb) : {};
         
@@ -339,7 +339,7 @@ export default function PaywallModal({
                     value={cardName}
                     onChange={(e) => setCardName(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:border-indigo-600 outline-none font-sans"
-                    placeholder="E.g. Neeraj Jain"
+                    placeholder="E.g. WhyOr Vault"
                   />
                 </div>
 

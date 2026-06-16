@@ -568,7 +568,7 @@ export function EntryModalContent({
           value={formData.patentInventors || ''} 
           onChange={(e) => updateField('patentInventors', e.target.value)} 
           className="w-full bg-slate-950 border border-slate-850 rounded px-4 py-3 text-sm text-white focus:border-amber-600 outline-none" 
-          placeholder="e.g. Neeraj Jain, Cooper Smith"
+          placeholder="e.g. WhyOr Vault, Cooper Smith"
         />
       </div>
 
