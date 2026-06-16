@@ -18,21 +18,22 @@ const WORDLIST = [
 export function validateMasterKey(key: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   
-  if (key.length !== 24) {
-    errors.push("Access Key must be exactly 24 characters.");
+  if (key.length < 12 || key.length > 64) {
+    errors.push("Security keys must be between 12 and 64 characters in length.");
   }
 
-  const specialCount = (key.match(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/g) || []).length;
-  if (specialCount < 6) {
-    errors.push("Requires at least 6 special characters for entropy sufficiency.");
+  const hasLetter = /[a-zA-Z]/.test(key);
+  if (!hasLetter) {
+    errors.push("Must contain at least one letter.");
   }
 
-  if (/(.)\1\1/.test(key)) {
-    errors.push("Security violation: Repeated characters detected.");
+  const hasSpecialOrDigit = /[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(key);
+  if (!hasSpecialOrDigit) {
+    errors.push("Must contain at least one number or special character (e.g. !@#$).");
   }
 
-  if (/123|abc|qwerty|asdf/i.test(key)) {
-    errors.push("Security violation: Common sequences detected.");
+  if (/1234|abcd|qwerty|asdf/i.test(key)) {
+    errors.push("Weak sequence detected. Please choose a more complex or random key.");
   }
 
   return { valid: errors.length === 0, errors };

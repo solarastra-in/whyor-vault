@@ -2068,7 +2068,7 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
   useEffect(() => {
     // Automatically pre-populate default, highly-secure random keys on mount to ensure valid state
     setMasterKey(generateSecureMasterKey());
-    setDuressKey(generateSecureMasterKey());
+    setDuressKey('');
   }, []);
 
   useEffect(() => {
@@ -2363,14 +2363,27 @@ SAFEKEEPING PROTOCOL:
           )}
 
           {step === 'master_key' && (
-            <div className="space-y-8">
-              <div>
-                <h3 className="text-white font-bold mb-2">Protocol Master Key</h3>
-                <p className="text-xs text-slate-500 leading-relaxed mb-6">
-                  This 24-character string is your absolute recovery root. It must be stored in a safe, physical location. It is <span className="text-white">never</span> stored in our database.
+            <div className="space-y-8 animate-fade-in">
+              <div className="space-y-3">
+                <div className="h-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3">
+                  <ShieldCheck className="h-5 w-5 text-indigo-400 shrink-0" />
+                  <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Step 1: Your Security Passkey (Master Key)</span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Your <strong>Primary Master Key</strong> is like an offline master password. It acts as the key to encrypt and unlock your vault. 
+                  Because our servers do not store or see this key, you are the only person who can recover your vault.
                 </p>
+                <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-lg text-[11px] text-slate-400 leading-normal space-y-1">
+                  <span className="font-bold text-slate-200">💡 Custom Key Requirements:</span>
+                  <p>You can use the auto-generated key below or type your own key! Custom keys must be:</p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-slate-500">
+                    <li>Between <span className="text-slate-300 font-semibold">12 and 64 characters</span> long</li>
+                    <li>Contain at least <span className="text-slate-300 font-semibold">one letter</span> (a-z, A-Z)</li>
+                    <li>Contain at least <span className="text-slate-300 font-semibold">one number</span> or <span className="text-slate-300 font-semibold">special character</span> (e.g. !@#$)</li>
+                  </ul>
+                </div>
                 
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <input 
                     type="text"
                     value={masterKey}
@@ -2389,88 +2402,95 @@ SAFEKEEPING PROTOCOL:
                 </div>
 
                 {validation.errors.length > 0 && (
-                  <div className="mt-4 p-4 bg-red-500/5 border border-red-500/20 rounded-lg">
+                  <div className="mt-2 p-4 bg-red-400/5 border border-red-400/20 rounded-lg">
                     <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                        <ShieldAlert className="h-3 w-3" />
-                       Policy Violations
-                    </p>
+                       Passkey Requirements Not Met
+                     </p>
                     <ul className="space-y-1">
-                       {validation.errors.map((err, i) => <li key={i} className="text-[11px] text-slate-500">• {err}</li>)}
+                       {validation.errors.map((err, i) => <li key={i} className="text-[11px] text-slate-400">• {err}</li>)}
                     </ul>
                   </div>
                 )}
               </div>
 
-              {/* Duress Destruction Key Module */}
-              <div className="pt-6 border-t border-slate-800 space-y-4">
-                <div>
-                  <h4 className="text-white font-bold mb-1 flex items-center gap-2">
-                    <AlertOctagon className="h-4 w-4 text-red-500 stroke-red-500" />
-                    Duress Destruction Key Setup
-                  </h4>
-                  <p className="text-xs text-slate-500 leading-relaxed mb-4">
-                    In emergency scenarios where you are forced to unlock the vault under duress, enter this key instead containing a special destruction signature. The system will instantly and permanently obliterate the entire database offline and online. This key <span className="text-white font-bold">must be different</span> from your primary Master Key.
-                  </p>
+              {/* Duress Destruction Key Module (Optional) */}
+              <div className="pt-6 border-t border-slate-800 space-y-3">
+                <div className="h-2 bg-red-500/5 border border-red-500/10 rounded-xl p-4 flex items-center gap-3">
+                  <AlertOctagon className="h-5 w-5 text-red-500 shrink-0" />
+                  <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Step 2: Duress Destruct Key (Optional)</span>
                 </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  A <strong>Duress Key</strong> is an <em>optional</em> emergency panic code. If someone forces you to open your vault, 
+                  entering this key instead of your Master Key will silently and permanently erase your database to protect your privacy.
+                </p>
+                <p className="text-[11px] text-amber-500/90 font-medium">
+                  ⭐️ <strong className="text-amber-400">Simplify your setup:</strong> If you don't need this feature or want to avoid memorizing extra keys, <strong>just leave it blank!</strong> You can always set it up later.
+                </p>
 
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <input 
                     type="text"
                     value={duressKey}
                     onChange={(e) => setDuressKey(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-sm sm:text-base font-mono text-red-400 tracking-wider outline-none focus:border-red-500 transition-all placeholder:text-slate-800"
-                    placeholder="Enter or generate duress key..."
+                    className="flex-1 bg-slate-950 border border-slate-850 rounded-xl px-4 py-4 text-sm sm:text-base font-mono text-red-400 tracking-wider outline-none focus:border-red-500 transition-all placeholder:text-slate-700"
+                    placeholder="Leave empty to skip duress protection..."
                   />
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      let generated = generateSecureMasterKey();
-                      while (generated === masterKey) {
-                        generated = generateSecureMasterKey();
-                      }
-                      setDuressKey(generated);
-                    }}
-                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs uppercase font-bold tracking-wider shrink-0 transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Auto-Generate
-                  </button>
+                  <div className="flex gap-2">
+                    {duressKey && (
+                      <button 
+                        type="button"
+                        onClick={() => setDuressKey('')}
+                        className="py-3 px-3 bg-red-950/40 hover:bg-red-900/30 text-red-400 hover:text-red-300 rounded-xl text-xs uppercase font-black tracking-wider transition-all border border-red-900/30 font-mono"
+                        title="Clear & Disable"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        let generated = generateSecureMasterKey();
+                        while (generated === masterKey) {
+                          generated = generateSecureMasterKey();
+                        }
+                        setDuressKey(generated);
+                      }}
+                      className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs uppercase font-bold tracking-wider shrink-0 transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Auto-Generate
+                    </button>
+                  </div>
                 </div>
 
                 {duressKey && duressKey === masterKey && (
-                  <p className="text-[11px] font-bold text-red-500 flex items-center gap-1.5 animate-pulse uppercase tracking-widest">
-                    ⚠️ Validation Error: Duress key cannot be identical to Master key.
+                  <p className="text-[11px] font-bold text-red-400 flex items-center gap-1.5 animate-pulse uppercase tracking-widest mt-1">
+                    ⚠️ Validation Error: Duress key cannot be identical to your Master key.
                   </p>
                 )}
               </div>
 
-              {/* Storage Warning and Advice Callout */}
-              <div className="p-5 bg-amber-500/5 border border-amber-500/20 rounded-2xl space-y-3">
-                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-amber-400" />
-                  Critical Storage Guidelines (Read Carefully)
+              {/* Safe Storage Tips */}
+              <div className="p-5 bg-indigo-500/5 border border-indigo-500/15 rounded-2xl space-y-2">
+                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-indigo-400" />
+                  How to Store Your Secret Keys Safely:
                 </span>
-                <div className="text-[11px] text-slate-400 leading-relaxed space-y-2">
-                  <p>
-                    <strong className="text-slate-200">1. Physical Backups:</strong> Grab a pen and clean sheet of paper. Write down both keys in physical handwriting. Avoid storing files as digital screenshots, text files, or emails.
-                  </p>
-                  <p>
-                    <strong className="text-slate-200">2. Physical Isolation:</strong> Do <em className="text-red-400 not-italic font-bold">NOT</em> store your Master Key and Duress Key inside the same folder or physical safe. Kept together, they defeat the security of Duress protection.
-                  </p>
-                  <p>
-                    <strong className="text-slate-200">3. Functional Distinction:</strong> The <span className="text-indigo-400 font-bold">Primary Master Key</span> grants access to configuration recovery. The <span className="text-red-400 font-bold">Duress Key</span> is an irreversible destruct switch. Confusing them can lead to accidental data loss.
-                  </p>
-                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  We recommend writing your Master Key on a physical piece of paper and storing it in a drawer or home safe. 
+                  Do not take screenshots or save files on cloud storage where hackers or malware could find them.
+                </p>
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex gap-4 pt-4">
                 <button onClick={() => setStep('intro')} className="flex-1 py-4 bg-slate-800 text-slate-400 rounded-xl font-bold uppercase text-xs tracking-widest hover:text-white transition-all">Back</button>
                 <button 
-                  disabled={!validation.valid || !duressKey || duressKey === masterKey}
+                  disabled={!validation.valid || (!!duressKey && duressKey === masterKey)}
                   onClick={handleConfirmMasterKey}
                   className="flex-[2] py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all disabled:opacity-30 disabled:grayscale uppercase text-xs tracking-widest cursor-pointer"
                 >
-                  Confirm Security Keys
+                  Confirm & Continue
                 </button>
               </div>
             </div>
@@ -2581,52 +2601,54 @@ SAFEKEEPING PROTOCOL:
                     </div>
 
                     {/* Duress Destruction Key Card */}
-                    <div className="bg-slate-950/40 border border-red-950/40 rounded-2xl p-6 space-y-6">
-                      <div className="flex flex-col md:flex-row items-center gap-6">
-                        <div className="bg-slate-950 p-4 border border-red-950/60 rounded-xl shrink-0 shadow-inner flex items-center justify-center">
-                          <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(duressKey)}&size=150x150&color=239-68-68&bgcolor=15-23-42`}
-                            alt="Duress Key QR"
-                            className="w-32 h-32 select-none"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                        <div className="space-y-4 flex-1 w-full">
-                          <div>
-                            <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-2">Duress Destruction Key (Vault Purge Event)</span>
-                            
-                            {/* Spaced, chunked layout for effortless readability & transcription */}
-                            <div className="flex flex-wrap gap-2 p-3 bg-slate-950 border border-red-950/40 rounded-xl items-center mb-2">
-                              {duressKey.match(/.{1,4}/g)?.map((chunk, index) => (
-                                <div key={index} className="flex items-center">
-                                  <span className="font-mono text-sm sm:text-base font-black px-2 py-1 bg-slate-900 border border-red-950/20 rounded text-red-400 tracking-wider">
-                                    {chunk}
-                                  </span>
-                                  {index < 5 && <span className="text-red-900/40 font-bold px-0.5 text-xs select-none">-</span>}
-                                </div>
-                              ))}
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-500 block break-all mb-4 px-1 mt-1">Raw Key: {duressKey}</span>
+                    {duressKey && (
+                      <div className="bg-slate-950/40 border border-red-950/40 rounded-2xl p-6 space-y-6">
+                        <div className="flex flex-col md:flex-row items-center gap-6">
+                          <div className="bg-slate-950 p-4 border border-red-950/60 rounded-xl shrink-0 shadow-inner flex items-center justify-center">
+                            <img 
+                              src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(duressKey)}&size=150x150&color=239-68-68&bgcolor=15-23-42`}
+                              alt="Duress Key QR"
+                              className="w-32 h-32 select-none"
+                              referrerPolicy="no-referrer"
+                            />
                           </div>
-                          
-                          <div className="flex flex-wrap gap-3">
-                            <button 
-                              onClick={() => {
-                                safeCopyToClipboard(duressKey)
-                                  .then((ok) => {
-                                    if (ok) notify("Duress Key copied to clipboard", "success");
-                                    else notify("Copy failed. Please manually copy.", "error");
-                                  });
-                              }}
-                              className="py-2.5 px-4 bg-slate-850 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 border border-slate-700 flex-1 sm:flex-none cursor-pointer"
-                            >
-                              <Copy className="h-4 w-4 text-red-500" />
-                              Copy Duress Key
-                            </button>
+                          <div className="space-y-4 flex-1 w-full">
+                            <div>
+                              <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-2">Duress Destruction Key (Vault Purge Event)</span>
+                              
+                              {/* Spaced, chunked layout for effortless readability & transcription */}
+                              <div className="flex flex-wrap gap-2 p-3 bg-slate-950 border border-red-950/40 rounded-xl items-center mb-2">
+                                {duressKey.match(/.{1,4}/g)?.map((chunk, index) => (
+                                  <div key={index} className="flex items-center">
+                                    <span className="font-mono text-sm sm:text-base font-black px-2 py-1 bg-slate-900 border border-red-950/20 rounded text-red-400 tracking-wider">
+                                      {chunk}
+                                    </span>
+                                    {index < 5 && <span className="text-red-900/40 font-bold px-0.5 text-xs select-none">-</span>}
+                                  </div>
+                                ))}
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-500 block break-all mb-4 px-1 mt-1">Raw Key: {duressKey}</span>
+                            </div>
+                            
+                            <div className="flex flex-wrap gap-3">
+                              <button 
+                                onClick={() => {
+                                  safeCopyToClipboard(duressKey)
+                                    .then((ok) => {
+                                      if (ok) notify("Duress Key copied to clipboard", "success");
+                                      else notify("Copy failed. Please manually copy.", "error");
+                                    });
+                                }}
+                                className="py-2.5 px-4 bg-slate-850 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 border border-slate-700 flex-1 sm:flex-none cursor-pointer"
+                              >
+                                <Copy className="h-4 w-4 text-red-500" />
+                                Copy Duress Key
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Highly Visible Advisory & Storage Alert Checklist */}
                     <div className="p-5 bg-amber-500/5 border border-amber-500/25 rounded-2xl space-y-4">
