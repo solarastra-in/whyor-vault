@@ -369,7 +369,7 @@ import {
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
-  ChevronDown, ChevronUp, Sun, Moon
+  ChevronDown, ChevronUp, Sun, Moon, Menu
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
@@ -2063,6 +2063,7 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
   const [drillShareB, setDrillShareB] = useState('');
   const [drillError, setDrillError] = useState('');
   const [drillSuccess, setDrillSuccess] = useState(false);
+  const [showDrillHelper, setShowDrillHelper] = useState(false);
 
   useEffect(() => {
     // Automatically pre-populate default, highly-secure random keys on mount to ensure valid state
@@ -2369,17 +2370,18 @@ SAFEKEEPING PROTOCOL:
                   This 24-character string is your absolute recovery root. It must be stored in a safe, physical location. It is <span className="text-white">never</span> stored in our database.
                 </p>
                 
-                <div className="relative">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <input 
                     type="text"
                     value={masterKey}
                     onChange={(e) => setMasterKey(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-6 py-5 text-xl font-mono text-indigo-400 tracking-wider outline-none focus:border-indigo-500 transition-all"
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-sm sm:text-base font-mono text-indigo-400 tracking-wider outline-none focus:border-indigo-500 transition-all"
                     placeholder="Enter or generate key..."
                   />
                   <button 
+                    type="button"
                     onClick={() => setMasterKey(generateSecureMasterKey())}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-all flex items-center gap-2 text-[10px] uppercase font-bold"
+                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs uppercase font-bold tracking-wider shrink-0 transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
                   >
                     <RefreshCw className="h-4 w-4" />
                     Auto-Generate
@@ -2411,12 +2413,12 @@ SAFEKEEPING PROTOCOL:
                   </p>
                 </div>
 
-                <div className="relative">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <input 
                     type="text"
                     value={duressKey}
                     onChange={(e) => setDuressKey(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-6 py-5 text-xl font-mono text-red-400 tracking-wider outline-none focus:border-red-500 transition-all placeholder:text-slate-800"
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-sm sm:text-base font-mono text-red-400 tracking-wider outline-none focus:border-red-500 transition-all placeholder:text-slate-800"
                     placeholder="Enter or generate duress key..."
                   />
                   <button 
@@ -2428,7 +2430,7 @@ SAFEKEEPING PROTOCOL:
                       }
                       setDuressKey(generated);
                     }}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-all flex items-center gap-2 text-[10px] uppercase font-bold"
+                    className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs uppercase font-bold tracking-wider shrink-0 transition-all flex items-center justify-center gap-2 cursor-pointer border border-slate-700"
                   >
                     <RefreshCw className="h-4 w-4" />
                     Auto-Generate
@@ -2442,12 +2444,31 @@ SAFEKEEPING PROTOCOL:
                 )}
               </div>
 
+              {/* Storage Warning and Advice Callout */}
+              <div className="p-5 bg-amber-500/5 border border-amber-500/20 rounded-2xl space-y-3">
+                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-amber-400" />
+                  Critical Storage Guidelines (Read Carefully)
+                </span>
+                <div className="text-[11px] text-slate-400 leading-relaxed space-y-2">
+                  <p>
+                    <strong className="text-slate-200">1. Physical Backups:</strong> Grab a pen and clean sheet of paper. Write down both keys in physical handwriting. Avoid storing files as digital screenshots, text files, or emails.
+                  </p>
+                  <p>
+                    <strong className="text-slate-200">2. Physical Isolation:</strong> Do <em className="text-red-400 not-italic font-bold">NOT</em> store your Master Key and Duress Key inside the same folder or physical safe. Kept together, they defeat the security of Duress protection.
+                  </p>
+                  <p>
+                    <strong className="text-slate-200">3. Functional Distinction:</strong> The <span className="text-indigo-400 font-bold">Primary Master Key</span> grants access to configuration recovery. The <span className="text-red-400 font-bold">Duress Key</span> is an irreversible destruct switch. Confusing them can lead to accidental data loss.
+                  </p>
+                </div>
+              </div>
+
               <div className="flex gap-4">
                 <button onClick={() => setStep('intro')} className="flex-1 py-4 bg-slate-800 text-slate-400 rounded-xl font-bold uppercase text-xs tracking-widest hover:text-white transition-all">Back</button>
                 <button 
                   disabled={!validation.valid || !duressKey || duressKey === masterKey}
                   onClick={handleConfirmMasterKey}
-                  className="flex-[2] py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all disabled:opacity-30 disabled:grayscale uppercase text-xs tracking-widest"
+                  className="flex-[2] py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all disabled:opacity-30 disabled:grayscale uppercase text-xs tracking-widest cursor-pointer"
                 >
                   Confirm Security Keys
                 </button>
@@ -2467,7 +2488,7 @@ SAFEKEEPING PROTOCOL:
                 </p>
 
                 {/* Profile Selector */}
-                <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                   <button 
                     onClick={() => setDeliveryProfile('consumer')}
                     className={cn(
@@ -2503,49 +2524,137 @@ SAFEKEEPING PROTOCOL:
 
                 {/* Consumer Delivery Details */}
                 {deliveryProfile === 'consumer' && (
-                  <div className="space-y-6 bg-slate-950/40 border border-slate-800 rounded-2xl p-6">
-                    <div className="flex flex-col md:flex-row items-center gap-6">
-                      <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl shrink-0 shadow-inner">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(masterKey)}&size=150x150&color=99-102-241&bgcolor=15-23-42`}
-                          alt="Master Key QR"
-                          className="w-32 h-32 select-none"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                      <div className="space-y-4 flex-1">
-                        <div>
-                          <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-1">Cold Storage Access Key</span>
-                          <span className="font-mono text-base font-bold text-white tracking-wider break-all block">{masterKey}</span>
+                  <div className="space-y-6">
+                    {/* Primary Master Key Card */}
+                    <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-6 space-y-6">
+                      <div className="flex flex-col md:flex-row items-center gap-6">
+                        <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl shrink-0 shadow-inner flex items-center justify-center">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(masterKey)}&size=150x150&color=99-102-241&bgcolor=15-23-42`}
+                            alt="Master Key QR"
+                            className="w-32 h-32 select-none"
+                            referrerPolicy="no-referrer"
+                          />
                         </div>
-                        <div className="flex flex-wrap gap-3">
-                          <button 
-                            onClick={downloadColdStorageCard}
-                            className="py-3 px-5 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition-all flex items-center gap-4 border border-slate-700 inline-flex"
-                          >
-                            <Download className="h-4 w-4 text-indigo-400 animate-pulse" />
-                            Download Safe Recovery Sheet
-                          </button>
-                          <button 
-                            onClick={() => {
-                              safeCopyToClipboard(masterKey)
-                                .then((ok) => {
-                                  if (ok) notify("Master Key copied to clipboard", "success");
-                                  else notify("Copy failed. Please manually select and copy.", "error");
-                                });
-                            }}
-                            className="py-3 px-5 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700 transition-all flex items-center gap-2 border border-slate-700 inline-flex"
-                          >
-                            <Copy className="h-4 w-4 text-indigo-400" />
-                            Copy Master Key
-                          </button>
+                        <div className="space-y-4 flex-1 w-full">
+                          <div>
+                            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block mb-2">Primary Recovery Master Key</span>
+                            
+                            {/* Spaced, chunked layout for effortless readability & transcription */}
+                            <div className="flex flex-wrap gap-2 p-3 bg-slate-950 border border-slate-850 rounded-xl items-center mb-2">
+                              {masterKey.match(/.{1,4}/g)?.map((chunk, index) => (
+                                <div key={index} className="flex items-center">
+                                  <span className="font-mono text-sm sm:text-base font-black px-2 py-1 bg-slate-900 border border-slate-800 rounded text-white tracking-wider">
+                                    {chunk}
+                                  </span>
+                                  {index < 5 && <span className="text-slate-700 font-bold px-0.5 text-xs select-none">-</span>}
+                                </div>
+                              ))}
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-500 block break-all mb-4 px-1 mt-1">Raw Key: {masterKey}</span>
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-3">
+                            <button 
+                              onClick={downloadColdStorageCard}
+                              className="py-2.5 px-4 bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold rounded-xl hover:bg-indigo-600/20 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none cursor-pointer"
+                            >
+                              <Download className="h-4 w-4 animate-pulse" />
+                              Download Physical Sheet
+                            </button>
+                            <button 
+                              onClick={() => {
+                                safeCopyToClipboard(masterKey)
+                                  .then((ok) => {
+                                    if (ok) notify("Primary Master Key copied to clipboard", "success");
+                                    else notify("Copy failed. Please manually copy.", "error");
+                                  });
+                              }}
+                              className="py-2.5 px-4 bg-slate-850 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 border border-slate-700 flex-1 sm:flex-none cursor-pointer"
+                            >
+                              <Copy className="h-4 w-4 text-indigo-400" />
+                              Copy Key
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    <p className="text-[10px] uppercase tracking-wider text-amber-500/80 font-black flex items-center gap-2 bg-amber-500/10 p-3 rounded-lg border border-amber-500/10">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      PHYSICAL COMPLIANCE: Store on physical cardboard in home safe. Do NOT take screenshots or save to disk.
-                    </p>
+
+                    {/* Duress Destruction Key Card */}
+                    <div className="bg-slate-950/40 border border-red-950/40 rounded-2xl p-6 space-y-6">
+                      <div className="flex flex-col md:flex-row items-center gap-6">
+                        <div className="bg-slate-950 p-4 border border-red-950/60 rounded-xl shrink-0 shadow-inner flex items-center justify-center">
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(duressKey)}&size=150x150&color=239-68-68&bgcolor=15-23-42`}
+                            alt="Duress Key QR"
+                            className="w-32 h-32 select-none"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div className="space-y-4 flex-1 w-full">
+                          <div>
+                            <span className="text-[10px] font-black text-red-400 uppercase tracking-widest block mb-2">Duress Destruction Key (Vault Purge Event)</span>
+                            
+                            {/* Spaced, chunked layout for effortless readability & transcription */}
+                            <div className="flex flex-wrap gap-2 p-3 bg-slate-950 border border-red-950/40 rounded-xl items-center mb-2">
+                              {duressKey.match(/.{1,4}/g)?.map((chunk, index) => (
+                                <div key={index} className="flex items-center">
+                                  <span className="font-mono text-sm sm:text-base font-black px-2 py-1 bg-slate-900 border border-red-950/20 rounded text-red-400 tracking-wider">
+                                    {chunk}
+                                  </span>
+                                  {index < 5 && <span className="text-red-900/40 font-bold px-0.5 text-xs select-none">-</span>}
+                                </div>
+                              ))}
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-500 block break-all mb-4 px-1 mt-1">Raw Key: {duressKey}</span>
+                          </div>
+                          
+                          <div className="flex flex-wrap gap-3">
+                            <button 
+                              onClick={() => {
+                                safeCopyToClipboard(duressKey)
+                                  .then((ok) => {
+                                    if (ok) notify("Duress Key copied to clipboard", "success");
+                                    else notify("Copy failed. Please manually copy.", "error");
+                                  });
+                              }}
+                              className="py-2.5 px-4 bg-slate-850 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 border border-slate-700 flex-1 sm:flex-none cursor-pointer"
+                            >
+                              <Copy className="h-4 w-4 text-red-500" />
+                              Copy Duress Key
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Highly Visible Advisory & Storage Alert Checklist */}
+                    <div className="p-5 bg-amber-500/5 border border-amber-500/25 rounded-2xl space-y-4">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-amber-500 animate-bounce" />
+                        <span className="text-xs uppercase tracking-widest font-black text-amber-500">How to Store Your Master & Duress Keys:</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-400 leading-relaxed">
+                        <div className="bg-slate-950/40 border border-slate-855 rounded-xl p-4 space-y-1.5 shadow-sm">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Option A: Paper Ledger</span>
+                          <p>
+                            Grab a physical paper notebook and a dark ink pen. Write both keys down. Write each character clearly. Hide this ledger in a secure home lockbox.
+                          </p>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-855 rounded-xl p-4 space-y-1.5 shadow-sm">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">Option B: Physical Cardboard</span>
+                          <p>
+                            Download the **Recovery Sheet** text. Print it offline. Cut out the key parts and keep them in two separate watertight physical safes.
+                          </p>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-855 rounded-xl p-4 space-y-1.5 shadow-sm">
+                          <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">What <strong className="text-red-400">NOT</strong> to Do</span>
+                          <p>
+                            Never take screenshots. Do not upload to Google Drive, iCloud, or Dropbox. Do not store in plain emails or messengers where malware can scan them.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -2714,11 +2823,132 @@ SAFEKEEPING PROTOCOL:
                   {!drillSuccess && (
                     <button 
                       onClick={handleRunRecoveryDrill}
-                      className="w-full py-4 bg-slate-850 hover:bg-slate-800 text-white border border-slate-700 rounded-xl text-xs font-bold transition-all tracking-widest uppercase"
+                      className="w-full py-4 bg-slate-850 hover:bg-slate-800 text-white border border-slate-700 rounded-xl text-xs font-bold transition-all tracking-widest uppercase cursor-pointer"
                     >
                       Verify and Reconstruct Secret
                     </button>
                   )}
+
+                  {/* Setup Reference Assistant Drawer */}
+                  <div className="border border-indigo-500/20 bg-indigo-500/5 rounded-xl p-4 mt-4 text-left">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest flex items-center gap-1.5">
+                        <Eye className="h-3.5 w-3.5 text-indigo-400" />
+                        Setup Reference Assistant
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowDrillHelper(!showDrillHelper)}
+                        className="text-[10px] uppercase font-extrabold text-indigo-400 hover:text-white border-b border-indigo-500/20 hover:border-white transition-all cursor-pointer"
+                      >
+                        {showDrillHelper ? "Hide Key Helper" : "Reveal Generated Keys"}
+                      </button>
+                    </div>
+                    
+                    {showDrillHelper && (
+                      <div className="mt-4 pt-4 border-t border-indigo-500/10 space-y-4">
+                        <p className="text-[11px] text-slate-400 leading-normal">
+                          Use this temporary helper to verify your transcription or quickly copy the keys you just stored. These will never be shown again after setup.
+                        </p>
+                        
+                        {deliveryProfile === 'consumer' ? (
+                          <div className="space-y-3">
+                            <div>
+                              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-1">Primary Recovery Master Key</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-white bg-slate-950 px-3 py-2 border border-slate-800 rounded-lg break-all flex-1 select-all">{masterKey}</span>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    safeCopyToClipboard(masterKey)
+                                      .then(ok => ok && notify("Master Key copied", "success"));
+                                  }}
+                                  className="p-2 bg-slate-800 border border-slate-700 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                  title="Copy Key"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-1">Duress Destruction Key (Nuke Switch)</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-white bg-slate-950 px-3 py-2 border border-slate-800 rounded-lg break-all flex-1 select-all">{duressKey}</span>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    safeCopyToClipboard(duressKey)
+                                      .then(ok => ok && notify("Duress Key copied", "success"));
+                                  }}
+                                  className="p-2 bg-slate-800 border border-slate-700 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                  title="Copy Key"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div>
+                              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-1">Share Alpha (1 of 3)</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] text-white bg-slate-950 px-3 py-2 border border-slate-800 rounded-lg break-all flex-1 select-all">{shares.share1}</span>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    safeCopyToClipboard(shares.share1)
+                                      .then(ok => ok && notify("Share Alpha copied", "success"));
+                                  }}
+                                  className="p-2 bg-slate-800 border border-slate-700 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                  title="Copy Key"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-1">Share Beta (2 of 3)</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] text-white bg-slate-950 px-3 py-2 border border-slate-800 rounded-lg break-all flex-1 select-all">{shares.share2}</span>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    safeCopyToClipboard(shares.share2)
+                                      .then(ok => ok && notify("Share Beta copied", "success"));
+                                  }}
+                                  className="p-2 bg-slate-800 border border-slate-700 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                  title="Copy Key"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-1">Share Gamma (3 of 3)</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] text-white bg-slate-950 px-3 py-2 border border-slate-800 rounded-lg break-all flex-1 select-all">{shares.share3}</span>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    safeCopyToClipboard(shares.share3)
+                                      .then(ok => ok && notify("Share Gamma copied", "success"));
+                                  }}
+                                  className="p-2 bg-slate-800 border border-slate-700 hover:text-white rounded-lg transition-colors cursor-pointer"
+                                  title="Copy Key"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -3634,6 +3864,7 @@ function VaultMain({
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [visibleRecoveredAnswers, setVisibleRecoveredAnswers] = useState<Record<number, boolean>>({});
   const [isChallengeAnswersOpen, setIsChallengeAnswersOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Dynamic system and pricing rates configured inside control console
   const [systemConfig, setSystemConfig] = useState({
@@ -3733,6 +3964,11 @@ function VaultMain({
     downloadAnchorNode.remove();
   };
 
+  const selectFilter = (newFilter: any) => {
+    setFilter(newFilter);
+    setIsSidebarOpen(false);
+  };
+
   const filteredItems = items.filter(it => {
     const matchType = filter === 'all' 
       ? it.type !== 'life_event' 
@@ -3748,11 +3984,23 @@ function VaultMain({
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-200">
+      {/* Sidebar Mobile Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)}
+          className="lg:hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-xs" 
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen fixed top-0 left-0">
+      <aside className={cn(
+        "w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen fixed top-0 left-0 transition-transform duration-300 z-50",
+        "lg:translate-x-0 lg:z-10",
+        isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
         <div className="p-6 border-b border-slate-800 bg-slate-900">
           <div 
-            onClick={() => setFilter('all')}
+            onClick={() => selectFilter('all')}
             className="flex items-center gap-3 mb-6 cursor-pointer group transition-all"
           >
             <div className="w-10 h-10 bg-indigo-600 rounded flex items-center justify-center border border-indigo-400 shadow-indigo group-hover:scale-110 transition-transform">
@@ -3790,24 +4038,24 @@ function VaultMain({
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] pl-3 mb-4 mt-2">Vault Categories</p>
-          <NavItem key="nav-all" active={filter === 'all'} label="Everything" icon={<Shield className="h-4 w-4" />} onClick={() => setFilter('all')} count={items.length} />
-          <NavItem key="nav-credit" active={filter === 'credit'} label="Cards & Credit" icon={<CreditCard className="h-4 w-4" />} onClick={() => setFilter('credit')} count={items.filter(i => i.type === 'credit').length} />
-          <NavItem key="nav-bank" active={filter === 'bank'} label="Banking" icon={<Landmark className="h-4 w-4" />} onClick={() => setFilter('bank')} count={items.filter(i => i.type === 'bank').length} />
-          <NavItem key="nav-brokerage" active={filter === 'brokerage'} label="Brokerage & Growth" icon={<RefreshCw className="h-4 w-4" />} onClick={() => setFilter('brokerage')} count={items.filter(i => i.type === 'brokerage').length} />
-          <NavItem key="nav-realestate" active={filter === 'realestate'} label="Real Estate" icon={<Plus className="h-4 w-4 shrink-0 rotate-45" />} onClick={() => setFilter('realestate')} count={items.filter(i => i.type === 'realestate').length} />
-          <NavItem key="nav-insurance" active={filter === 'insurance'} label="Life Insurance" icon={<ShieldCheck className="h-4 w-4" />} onClick={() => setFilter('insurance')} count={items.filter(i => i.type === 'insurance').length} />
-          <NavItem key="nav-patent" active={filter === 'patent'} label="Patent Filings" icon={<Lightbulb className="h-4 w-4" />} onClick={() => setFilter('patent')} count={items.filter(i => i.type === 'patent').length} />
-          <NavItem key="nav-non_financial" active={filter === 'non_financial'} label="Non-Financial Assets" icon={<FileText className="h-4 w-4" />} onClick={() => setFilter('non_financial')} count={items.filter(i => i.type === 'non_financial').length} />
-          <NavItem key="nav-will_trust" active={filter === 'will_trust'} label="Wills & Trusts" icon={<FolderOpen className="h-4 w-4" />} onClick={() => setFilter('will_trust')} count={items.filter(i => i.type === 'will_trust').length} />
-          <NavItem key="nav-documentation" active={filter === 'documentation'} label="Document Archive" icon={<Archive className="h-4 w-4" />} onClick={() => setFilter('documentation')} count={items.filter(i => i.type === 'documentation').length} />
-          <NavItem key="nav-crypto" active={filter === 'crypto'} label="Crypto &amp; Digital" icon={<Coins className="h-4 w-4 text-emerald-500" />} onClick={() => setFilter('crypto')} count={items.filter(i => i.type === 'crypto').length} />
-          <NavItem key="nav-hardware_recovery" active={filter === 'hardware_recovery'} label="Security Recovery Keys" icon={<Cpu className="h-4 w-4 text-pink-400" />} onClick={() => setFilter('hardware_recovery')} count={items.filter(i => i.type === 'hardware_recovery').length} />
-          <NavItem key="nav-other" active={filter === 'other'} label="Other Assets" icon={<KeySquare className="h-4 w-4" />} onClick={() => setFilter('other')} count={items.filter(i => i.type === 'other').length} />
+          <NavItem key="nav-all" active={filter === 'all'} label="Everything" icon={<Shield className="h-4 w-4" />} onClick={() => selectFilter('all')} count={items.length} />
+          <NavItem key="nav-credit" active={filter === 'credit'} label="Cards & Credit" icon={<CreditCard className="h-4 w-4" />} onClick={() => selectFilter('credit')} count={items.filter(i => i.type === 'credit').length} />
+          <NavItem key="nav-bank" active={filter === 'bank'} label="Banking" icon={<Landmark className="h-4 w-4" />} onClick={() => selectFilter('bank')} count={items.filter(i => i.type === 'bank').length} />
+          <NavItem key="nav-brokerage" active={filter === 'brokerage'} label="Brokerage & Growth" icon={<RefreshCw className="h-4 w-4" />} onClick={() => selectFilter('brokerage')} count={items.filter(i => i.type === 'brokerage').length} />
+          <NavItem key="nav-realestate" active={filter === 'realestate'} label="Real Estate" icon={<Plus className="h-4 w-4 shrink-0 rotate-45" />} onClick={() => selectFilter('realestate')} count={items.filter(i => i.type === 'realestate').length} />
+          <NavItem key="nav-insurance" active={filter === 'insurance'} label="Life Insurance" icon={<ShieldCheck className="h-4 w-4" />} onClick={() => selectFilter('insurance')} count={items.filter(i => i.type === 'insurance').length} />
+          <NavItem key="nav-patent" active={filter === 'patent'} label="Patent Filings" icon={<Lightbulb className="h-4 w-4" />} onClick={() => selectFilter('patent')} count={items.filter(i => i.type === 'patent').length} />
+          <NavItem key="nav-non_financial" active={filter === 'non_financial'} label="Non-Financial Assets" icon={<FileText className="h-4 w-4" />} onClick={() => selectFilter('non_financial')} count={items.filter(i => i.type === 'non_financial').length} />
+          <NavItem key="nav-will_trust" active={filter === 'will_trust'} label="Wills & Trusts" icon={<FolderOpen className="h-4 w-4" />} onClick={() => selectFilter('will_trust')} count={items.filter(i => i.type === 'will_trust').length} />
+          <NavItem key="nav-documentation" active={filter === 'documentation'} label="Document Archive" icon={<Archive className="h-4 w-4" />} onClick={() => selectFilter('documentation')} count={items.filter(i => i.type === 'documentation').length} />
+          <NavItem key="nav-crypto" active={filter === 'crypto'} label="Crypto &amp; Digital" icon={<Coins className="h-4 w-4 text-emerald-500" />} onClick={() => selectFilter('crypto')} count={items.filter(i => i.type === 'crypto').length} />
+          <NavItem key="nav-hardware_recovery" active={filter === 'hardware_recovery'} label="Security Recovery Keys" icon={<Cpu className="h-4 w-4 text-pink-400" />} onClick={() => selectFilter('hardware_recovery')} count={items.filter(i => i.type === 'hardware_recovery').length} />
+          <NavItem key="nav-other" active={filter === 'other'} label="Other Assets" icon={<KeySquare className="h-4 w-4" />} onClick={() => selectFilter('other')} count={items.filter(i => i.type === 'other').length} />
           
           <div className="pt-4 border-t border-slate-800 mt-4 px-3">
             <p className="text-[10px] font-bold text-red-500 uppercase tracking-[0.2em] mb-2 pl-3">Workflows & Escrow</p>
             <button 
-              onClick={() => setFilter('events')}
+              onClick={() => selectFilter('events')}
               className={cn(
                 "w-full flex items-center justify-between p-3 text-[11px] font-bold uppercase tracking-widest rounded-lg transition-all border",
                 filter === 'events' 
@@ -3927,8 +4175,40 @@ function VaultMain({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 p-8 relative min-h-screen">
+      <main className="flex-1 lg:ml-64 ml-0 p-4 sm:p-8 relative min-h-screen">
         <div className="absolute inset-0 opacity-5 grid-bg pointer-events-none" />
+
+        {/* Mobile Top Bar */}
+        <div className="lg:hidden flex items-center justify-between p-4 bg-slate-900 border border-slate-800 rounded-2xl mb-6 relative z-20">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsSidebarOpen(true)}
+              className="p-2.5 bg-slate-950 border border-slate-800 rounded-xl hover:bg-slate-800 text-slate-350 hover:text-white transition-colors cursor-pointer"
+              title="Open Navigation Menu"
+            >
+              <Menu className="h-4.5 w-4.5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center border border-indigo-400">
+                <Lock className="text-white h-4 w-4" />
+              </div>
+              <span className="text-xs font-extrabold font-display text-white uppercase tracking-wider">WhyOr<span className="text-indigo-400">Vault</span></span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {remainingSecs !== null && (
+              <span className={cn(
+                "font-mono text-[10px] font-bold px-2 py-1 rounded-lg border",
+                remainingSecs <= 60 
+                  ? "text-[#ec4899] bg-pink-950/40 border border-pink-500/20 animate-pulse font-black" 
+                  : "text-indigo-400 bg-indigo-950/40 border border-indigo-500/20"
+              )}>
+                {formatTime(remainingSecs)}
+              </span>
+            )}
+          </div>
+        </div>
         
         {/* Slide Panel: Decrypted Security Answers */}
         <AnimatePresence>
@@ -4062,7 +4342,7 @@ function VaultMain({
           </div>
         )}
         
-        <header className="flex justify-between items-end mb-12 relative z-10">
+        <header className="flex flex-col md:flex-row gap-6 md:items-end justify-between mb-12 relative z-10">
           <div>
             <div className="flex items-center gap-4 mb-2">
               <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
@@ -5091,7 +5371,7 @@ function SettingsModal({
                 Initiating this sequence will result in the <span className="text-red-400 font-bold">irrevocable erasure</span> of all encrypted assets, audit trails, and security configurations associated with this vault. This action cannot be reversed. WhyOr Engineering maintains no secondary backups.
               </p>
 
-              <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                 <div className="p-4 bg-slate-950 rounded-xl border border-slate-800">
                    <span className="block text-[9px] font-bold text-slate-600 uppercase mb-1">Target Vault ID</span>
                    <span className="text-xs font-mono text-slate-300 font-medium break-all">{vaultId}</span>

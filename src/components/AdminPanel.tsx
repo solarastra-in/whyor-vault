@@ -1229,7 +1229,7 @@ export default function AdminPanel({
         </div>
         
         {/* Toggle sub-tabs */}
-        <div className="flex bg-slate-950 border border-slate-800 rounded-xl p-1 shrink-0">
+        <div className="flex flex-wrap md:flex-nowrap bg-slate-950 border border-slate-800 rounded-xl p-1 gap-1 shrink-0">
           <button
             onClick={() => setActiveTab('rates')}
             className={cn(
