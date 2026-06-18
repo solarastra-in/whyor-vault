@@ -663,6 +663,10 @@ export default function App() {
   });
 
   useEffect(() => {
+    document.title = "WhyOr Vault";
+  }, []);
+
+  useEffect(() => {
     if (theme === 'light') {
       document.documentElement.classList.add('light');
     } else {
