@@ -99,7 +99,7 @@ export default function PaywallModal({
       const generatedTxId = 'TX_SIM_' + Math.random().toString(36).substring(2, 15).toUpperCase();
       setTransactionId(generatedTxId);
       
-      if (typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox') {
+      if (typeof window !== 'undefined' && (import.meta as any).env?.VITE_APP_ENV === 'Sandbox') {
         const rawDb = localStorage.getItem('whyor_vault_sandbox_db_v2');
         const dbState = rawDb ? JSON.parse(rawDb) : {};
         

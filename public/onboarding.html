@@ -1,0 +1,1103 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title>WhyOrVault — Onboarding Guide</title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.6">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.4.0/dist/tabler-icons.min.css">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; color: #e2e8f0; background-color: #0b0f1e}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Times New Roman'; color: #64748b; background-color: #0b0f1e}
+    p.p3 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; color: #e2e8f0; background-color: #0b0f1e; min-height: 14.0px}
+    p.p4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Times; color: #e2e8f0}
+    span.s1 {font-kerning: none}
+    span.s2 {font: 12.0px Times; font-kerning: none}
+    span.s3 {font: 12.0px 'Times New Roman'; font-kerning: none}
+    span.s4 {font: 12.0px 'Apple Color Emoji'; font-kerning: none}
+    span.s5 {font: 12.0px 'Lucida Grande'; font-kerning: none}
+    span.s6 {font: 12.0px 'Songti SC'; font-kerning: none}
+    span.s7 {font-kerning: none; background-color: #0b0f1e}
+    
+    /* ═══════════════════════════════════
+       TOKENS — match vault dark theme
+    ═══════════════════════════════════ */
+    :root {
+      --bg:         #0b0f1e;
+      --bg2:        #101524;
+      --bg3:        #141928;
+      --card:       #161c2e;
+      --card2:      #1c2438;
+      --border:     rgba(255,255,255,.08);
+      --border2:    rgba(255,255,255,.14);
+      --blue:       #5b6ef5;
+      --blue2:      #7b8fff;
+      --teal:       #00c2c7;
+      --green:      #22c55e;
+      --green2:     #4ade80;
+      --amber:      #f59e0b;
+      --red:        #ef4444;
+      --violet:     #a78bfa;
+      --pink:       #f472b6;
+      --text:       #e2e8f0;
+      --muted:      #64748b;
+      --faint:      #1e2a40;
+      --white:      #ffffff;
+      --mono:       'Courier New', Courier, monospace;
+      --sans:       -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --r:          12px;
+      --r2:         8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); font-family: var(--sans); color: var(--text); }
+
+    /* ═══ SHELL ═══════════════════════ */
+    .shell {
+      width: 100vw; height: 100vh;
+      display: flex; flex-direction: column;
+      background: var(--bg);
+      position: relative; overflow: hidden;
+    }
+
+    /* ═══ HEADER ══════════════════════ */
+    .hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 32px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2); flex-shrink: 0;
+      position: relative; z-index: 10;
+    }
+    .hdr-brand {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .hdr-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: rgba(91,110,245,.15); border: 1px solid rgba(91,110,245,.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .hdr-title { font-size: 13px; font-weight: 500; color: var(--text); letter-spacing: .01em; }
+    .hdr-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: .06em; margin-top: 1px; }
+    .hdr-right { display: flex; align-items: center; gap: 16px; }
+    /* Step dots */
+    .step-dots { display: flex; gap: 6px; align-items: center; }
+    .sdot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--faint); transition: all .35s;
+    }
+    .sdot.done { background: var(--blue); }
+    .sdot.active { background: var(--blue2); width: 22px; border-radius: 4px; }
+    .hdr-skip {
+      font-size: 12px; color: var(--muted); cursor: pointer;
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 5px 12px; background: transparent;
+      font-family: var(--sans); transition: all .2s;
+    }
+    .hdr-skip:hover { color: var(--text); border-color: var(--border2); }
+
+    /* ═══ STAGE VIEWPORT ══════════════ */
+    .stage {
+      flex: 1; overflow: hidden; position: relative;
+    }
+    .screen {
+      position: absolute; inset: 0;
+      display: flex; align-items: stretch;
+      opacity: 0; pointer-events: none;
+      transform: translateX(40px);
+      transition: opacity .45s cubic-bezier(.22,1,.36,1), transform .45s cubic-bezier(.22,1,.36,1);
+    }
+    .screen.active {
+      opacity: 1; pointer-events: all; transform: translateX(0);
+    }
+    .screen.exit {
+      opacity: 0; transform: translateX(-40px);
+    }
+
+    /* ═══ FOOTER NAV ══════════════════ */
+    .fnav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px;
+      border-top: 1px solid var(--border);
+      background: var(--bg2); flex-shrink: 0;
+    }
+    .fn-left { display: flex; align-items: center; gap: 8px; }
+    .fn-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .1em; }
+    .fn-progress {
+      width: 120px; height: 3px; background: var(--faint); border-radius: 2px; overflow: hidden;
+    }
+    .fn-bar { height: 100%; background: var(--blue); border-radius: 2px; transition: width .5s cubic-bezier(.22,1,.36,1); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 20px; border-radius: var(--r2); border: none;
+      font-family: var(--sans); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all .2s; letter-spacing: .01em;
+    }
+    .btn-ghost { background: var(--card2); color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--border2); }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue2); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(91,110,245,.35); }
+    .btn-teal { background: rgba(0,194,199,.15); color: var(--teal); border: 1px solid rgba(0,194,199,.3); }
+    .btn-teal:hover { background: rgba(0,194,199,.22); }
+
+    /* ═══ SHARED LAYOUT ATOMS ════════ */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+    .left-panel {
+      padding: 40px 40px 32px;
+      display: flex; flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+    }
+    .right-panel {
+      padding: 40px 40px 32px;
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+      background: var(--bg2);
+    }
+    .full-panel {
+      flex: 1; padding: 40px 48px;
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .screen-label {
+      font-family: var(--mono); font-size: 10px; color: var(--blue2);
+      letter-spacing: .18em; text-transform: uppercase; margin-bottom: 10px;
+    }
+    .screen-h1 {
+      font-size: clamp(22px, 3vw, 34px); font-weight: 700; color: var(--white);
+      line-height: 1.15; letter-spacing: -.01em; margin-bottom: 12px;
+    }
+    .screen-h1 span { color: var(--teal); }
+    .screen-sub {
+      font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 24px;
+    }
+    .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+    /* Cards */
+    .ob-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 16px 18px; margin-bottom: 10px;
+      transition: all .25s;
+    }
+    .ob-card:last-child { margin-bottom: 0; }
+    .ob-card:hover { border-color: var(--border2); background: var(--card2); }
+    .ob-card-row { display: flex; align-items: center; gap: 12px; }
+    .ob-card-icon {
+      width: 36px; height: 36px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; flex-shrink: 0;
+    }
+    .ob-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .ob-card-sub { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+
+    /* Badges */
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: var(--mono); font-size: 10px; font-weight: 500;
+      padding: 3px 9px; border-radius: 20px; white-space: nowrap;
+    }
+    .badge-blue   { background: rgba(91,110,245,.15); color: var(--blue2); border: 1px solid rgba(91,110,245,.25); }
+    .badge-green  { background: rgba(34,197,94,.12); color: var(--green2); border: 1px solid rgba(34,197,94,.2); }
+    .badge-teal   { background: rgba(0,194,199,.12); color: var(--teal); border: 1px solid rgba(0,194,199,.2); }
+    .badge-amber  { background: rgba(245,158,11,.12); color: var(--amber); border: 1px solid rgba(245,158,11,.2); }
+    .badge-violet { background: rgba(167,139,250,.12); color: var(--violet); border: 1px solid rgba(167,139,250,.2); }
+    .badge-red    { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.2); }
+
+    /* Alert box */
+    .alert {
+      border-radius: var(--r2); padding: 12px 14px;
+      display: flex; gap: 10px; align-items: flex-start;
+      margin-bottom: 12px; font-size: 12px; line-height: 1.5;
+    }
+    .alert-blue { background: rgba(91,110,245,.1); border: 1px solid rgba(91,110,245,.2); color: #a5b4fc; }
+    .alert-green { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.18); color: #86efac; }
+    .alert-amber { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.2); color: #fcd34d; }
+    .alert i { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+    /* Step list */
+    .step-list { display: flex; flex-direction: column; gap: 0; }
+    .step-item {
+      display: flex; gap: 14px; padding: 14px 0;
+      border-bottom: 1px solid var(--border); position: relative;
+    }
+    .step-item:last-child { border-bottom: none; }
+    .step-num {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: rgba(91,110,245,.15); border: 1px solid rgba(91,110,245,.3);
+      color: var(--blue2); font-family: var(--mono); font-size: 11px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;
+    }
+    .step-item h4 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+    .step-item p { font-size: 12px; color: var(--muted); line-height: 1.55; }
+
+    /* Tag row */
+    .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+    /* Code / mono block */
+    .code-block {
+      background: #080c18; border: 1px solid var(--border);
+      border-left: 3px solid var(--blue); border-radius: 0 var(--r2) var(--r2) 0;
+      font-family: var(--mono); font-size: 11px; color: #94a3b8;
+      padding: 14px 16px; line-height: 1.85; margin-bottom: 12px;
+    }
+    .code-block .kw  { color: var(--blue2); }
+    .code-block .val { color: var(--green2); }
+    .code-block .cm  { color: #334155; }
+    .code-block .out { color: var(--teal); }
+    .code-block .w   { color: var(--amber); }
+
+    /* Progress bar row */
+    .pbar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .pbar-label { font-size: 12px; color: var(--muted); min-width: 160px; }
+    .pbar-track { flex: 1; height: 5px; background: var(--faint); border-radius: 3px; overflow: hidden; }
+    .pbar-fill { height: 100%; border-radius: 3px; transition: width 1.2s cubic-bezier(.22,1,.36,1); }
+    .pbar-note { font-family: var(--mono); font-size: 10px; min-width: 70px; text-align: right; }
+
+    /* Lock/encrypt visual */
+    .encrypt-demo {
+      background: #080c18; border: 1px solid var(--border);
+      border-radius: var(--r); padding: 16px 18px; margin-bottom: 12px;
+    }
+    .enc-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .enc-row:last-child { margin-bottom: 0; }
+    .enc-label { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 130px; }
+    .enc-val { font-family: var(--mono); font-size: 11px; color: var(--text); }
+    .enc-val.enc { color: #475569; letter-spacing: .05em; }
+    .enc-arrow { color: var(--blue2); font-size: 14px; flex-shrink: 0; }
+
+    /* Compartment list */
+    .comp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .comp-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--r2); padding: 12px 14px;
+      cursor: default; transition: all .2s;
+    }
+    .comp-card:hover { border-color: var(--border2); }
+    .comp-card .cc-icon { font-size: 18px; margin-bottom: 6px; }
+    .comp-card .cc-title { font-size: 12px; font-weight: 600; color: var(--text); }
+    .comp-card .cc-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Hero visual — animated lock */
+    .hero-visual {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+    }
+    .lock-ring {
+      width: 160px; height: 160px; position: relative; flex-shrink: 0;
+    }
+    .lock-ring svg { width: 100%; height: 100%; }
+    .lock-ring .lr-ring { stroke-dasharray: 440; stroke-dashoffset: 440; animation: drawRing 1.8s ease forwards; }
+    .lock-ring .lr-ring2 { stroke-dasharray: 380; stroke-dashoffset: 380; animation: drawRing 2.2s .2s ease forwards; }
+    @keyframes drawRing { to { stroke-dashoffset: 0; } }
+    .lock-pulse { animation: lockPulse 3s infinite; }
+    @keyframes lockPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.97)} }
+
+    /* Checklist */
+    .check-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .check-item:last-child { border-bottom: none; }
+    .check-box {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 1px; font-size: 11px;
+    }
+    .check-box.done { background: rgba(34,197,94,.15); border: 1px solid rgba(34,197,94,.3); color: var(--green2); }
+    .check-box.warn { background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.25); color: var(--amber); }
+    .check-box.never { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.2); color: #f87171; }
+    .check-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .check-sub { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+
+    /* Flow chart */
+    .flow-row {
+      display: flex; align-items: center; gap: 0; margin-bottom: 16px;
+    }
+    .flow-box {
+      flex: 1; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--r2); padding: 14px 12px; text-align: center;
+    }
+    .flow-box.active { border-color: rgba(91,110,245,.4); background: rgba(91,110,245,.08); }
+    .flow-box .fb-icon { font-size: 20px; margin-bottom: 6px; }
+    .flow-box .fb-step { font-family: var(--mono); font-size: 9px; color: var(--muted); letter-spacing: .1em; margin-bottom: 3px; }
+    .flow-box .fb-title { font-size: 12px; font-weight: 600; color: var(--text); }
+    .flow-box .fb-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .flow-arr { color: var(--faint); font-size: 18px; flex-shrink: 0; padding: 0 4px; }
+
+    /* Timer visual */
+    .timer-ring {
+      width: 120px; height: 120px; margin: 0 auto 16px;
+    }
+    .timer-ring svg { width: 100%; height: 100%; }
+    .timer-track { fill: none; stroke: var(--faint); stroke-width: 8; }
+    .timer-fill  { fill: none; stroke: var(--blue); stroke-width: 8; stroke-linecap: round;
+      stroke-dasharray: 314; stroke-dashoffset: 116; transform: rotate(-90deg); transform-origin: 50% 50%; }
+
+    /* Heir row */
+    .heir-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .heir-row:last-child { border-bottom: none; }
+    .heir-av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+    .heir-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .heir-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+    /* Completion */
+    .completion-graphic {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 32px 0;
+    }
+    .check-circle {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: rgba(34,197,94,.12); border: 2px solid rgba(34,197,94,.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px; margin-bottom: 20px;
+      animation: popIn .6s cubic-bezier(.34,1.56,.64,1) forwards;
+    }
+    @keyframes popIn { from{transform:scale(.4);opacity:0} to{transform:scale(1);opacity:1} }
+    .completion-title { font-size: 24px; font-weight: 700; color: var(--white); text-align: center; margin-bottom: 8px; }
+    .completion-sub { font-size: 14px; color: var(--muted); text-align: center; line-height: 1.65; max-width: 400px; }
+
+    /* Animated particles */
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+    .particle { position: absolute; border-radius: 50%; pointer-events: none; animation: float linear infinite; opacity: .25; }
+
+    /* Tooltip chip */
+    .tip-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: rgba(0,194,199,.1); border: 1px solid rgba(0,194,199,.2);
+      color: var(--teal); font-family: var(--mono); font-size: 10px;
+      padding: 3px 10px; border-radius: 20px; margin-bottom: 14px;
+    }
+
+    /* Section heading inside panel */
+    .sec-head { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 10px; }
+
+    /* Reveal animation helper */
+    [data-reveal] { opacity: 0; transform: translateY(14px); transition: opacity .55s, transform .55s cubic-bezier(.22,1,.36,1); }
+    [data-reveal].shown { opacity: 1; transform: none; }
+    [data-reveal="l"] { transform: translateX(-14px); }
+    [data-reveal="r"] { transform: translateX(14px); }
+    [data-reveal="l"].shown, [data-reveal="r"].shown { transform: none; }
+
+    /* Scan-line subtle overlay */
+    .shell::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 999;
+      background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,.03) 3px, rgba(0,0,0,.03) 4px);
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell" id="shell">
+
+  <!-- ═══ HEADER ═══ -->
+  <header class="hdr">
+    <div class="hdr-brand">
+      <div class="hdr-icon">🔑</div>
+      <div>
+        <div class="hdr-title">VAULT GENESIS PROTOCOL</div>
+        <div class="hdr-sub" id="hdr-phase">STATUS: PHASE I · DISCOVERY</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <div class="step-dots" id="step-dots"></div>
+      <button class="hdr-skip" id="btn-skip">SKIP INTRO</button>
+    </div>
+  </header>
+
+  <!-- ═══ STAGE ═══ -->
+  <div class="stage" id="stage">
+
+    <!-- ─── SCREEN 1: WHAT IS WHYOR VAULT? ─── -->
+    <div class="screen active" id="s1">
+      <div class="two-col">
+        <div class="left-panel">
+          <div data-reveal>
+            <div class="screen-label">// 01 · DISCOVERY PHASE</div>
+            <h1 class="screen-h1">Your entire life's<br>assets. <span>Secured forever.</span></h1>
+            <p class="screen-sub">WhyOrVault is a zero-knowledge encrypted estate vault. Catalog every critical asset, document, and instruction — and ensure your family can access them when it matters most, not before.</p>
+          </div>
+          <div data-reveal style="transition-delay:.1s">
+            <div class="tip-chip"><i class="ti ti-sparkles"></i> WHY THIS EXISTS</div>
+            <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:20px;">Every year, millions of families spend months—sometimes years—searching for bank accounts, insurance policies, property deeds, and passwords after losing a loved one. WhyOrVault solves this.</p>
+          </div>
+          <div data-reveal style="transition-delay:.2s">
+            <div class="ob-card">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.2);">🏛️</div>
+                <div><div class="ob-card-title">For your family's future</div><div class="ob-card-sub">Every heir knows exactly what exists, where it is, and how to access it — without guessing.</div></div>
+              </div>
+            </div>
+            <div class="ob-card">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(91,110,245,.12);border:1px solid rgba(91,110,245,.2);">🔐</div>
+                <div><div class="ob-card-title">Zero-knowledge encryption</div><div class="ob-card-sub">All keys are derived inside your browser. No server — not even WhyOr — can read your data.</div></div>
+              </div>
+            </div>
+            <div class="ob-card">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);">⏱️</div>
+                <div><div class="ob-card-title">Automated handoff when it matters</div><div class="ob-card-sub">A 30-day check-in timer. If you stop checking in, your designated heirs receive access automatically.</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="right-panel" style="align-items:center;justify-content:center;gap:24px;">
+          <div class="hero-visual" data-reveal="r" style="transition-delay:.15s">
+            <svg width="160" height="160" viewBox="0 0 160 160">
+              <circle cx="80" cy="80" r="70" fill="none" stroke="#1c2438" stroke-width="1.5"/>
+              <circle cx="80" cy="80" r="70" fill="none" stroke="#5b6ef5" stroke-width="2" stroke-linecap="round"
+                class="lr-ring" style="stroke-dasharray:440;stroke-dashoffset:440;animation:drawRing 1.8s ease forwards;"/>
+              <circle cx="80" cy="80" r="56" fill="none" stroke="#0b0f1e" stroke-width="14"/>
+              <circle cx="80" cy="80" r="56" fill="none" stroke="#00c2c7" stroke-width="2" stroke-linecap="round"
+                class="lr-ring2"/>
+              <g class="lock-pulse">
+                <rect x="58" y="74" width="44" height="34" rx="6" fill="#1c2438" stroke="#5b6ef5" stroke-width="1.5"/>
+                <path d="M68 74 V64 Q68 52 80 52 Q92 52 92 64 V74" fill="none" stroke="#5b6ef5" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="80" cy="89" r="5" fill="#5b6ef5"/>
+                <rect x="78.5" y="89" width="3" height="8" rx="1.5" fill="#5b6ef5"/>
+              </g>
+              <text x="80" y="142" text-anchor="middle" font-family="Courier New" font-size="9" fill="#334155" letter-spacing="2">ENCRYPTED</text>
+            </svg>
+            <div style="text-align:center">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--blue2);letter-spacing:.14em;margin-bottom:6px;">SYSTEM STATUS</div>
+              <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                <span class="badge badge-green"><i class="ti ti-check" style="font-size:10px;"></i> AES-256-GCM</span>
+                <span class="badge badge-blue">Client-side only</span>
+                <span class="badge badge-teal">Zero-knowledge</span>
+              </div>
+            </div>
+            <div style="width:100%;max-width:280px;">
+              <div class="pbar-row"><span class="pbar-label">Everyday assets</span><div class="pbar-track"><div class="pbar-fill" style="width:55%;background:var(--blue);"></div></div><span class="pbar-note" style="color:var(--muted);">55%</span></div>
+              <div class="pbar-row"><span class="pbar-label">Long-term estate</span><div class="pbar-track"><div class="pbar-fill" style="width:45%;background:var(--teal);"></div></div><span class="pbar-note" style="color:var(--muted);">45%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 2: WHAT DO YOU STORE? ─── -->
+    <div class="screen" id="s2">
+      <div class="two-col">
+        <div class="left-panel">
+          <div data-reveal>
+            <div class="screen-label">// 02 · WHAT GOES IN YOUR VAULT</div>
+            <h1 class="screen-h1">Two worlds.<br><span>One secure place.</span></h1>
+            <p class="screen-sub">WhyOrVault is organized into two distinct layers — everyday life essentials that your family needs day-to-day, and your long-term estate that transfers wealth and legacy.</p>
+          </div>
+          <div data-reveal style="transition-delay:.1s">
+            <div class="sec-head" style="color:var(--green2);">⚡ SIMPLE EVERYDAY MATTERS</div>
+            <div class="comp-grid" style="margin-bottom:16px;">
+              <div class="comp-card">
+                <div class="cc-icon">💳</div>
+                <div class="cc-title">Bank & Cards</div>
+                <div class="cc-sub">Nominees, card lists, autopay schedules</div>
+              </div>
+              <div class="comp-card">
+                <div class="cc-icon">🏠</div>
+                <div class="cc-title">Cash & Lockers</div>
+                <div class="cc-sub">Safe combos, cash stash, wardrobe codes</div>
+              </div>
+              <div class="comp-card">
+                <div class="cc-icon">⚡</div>
+                <div class="cc-title">Household</div>
+                <div class="cc-sub">Wi-Fi, utilities, billing cycles</div>
+              </div>
+              <div class="comp-card">
+                <div class="cc-icon">📱</div>
+                <div class="cc-title">Digital accounts</div>
+                <div class="cc-sub">Email, social, domains, GitHub</div>
+              </div>
+            </div>
+            <div class="sec-head" style="color:var(--amber);">🏛️ LONG-TERM FAMILY ESTATE</div>
+            <div class="comp-grid">
+              <div class="comp-card">
+                <div class="cc-icon">📜</div>
+                <div class="cc-title">Wills & Trusts</div>
+                <div class="cc-sub">Testament, trust mapping, beneficiaries</div>
+              </div>
+              <div class="comp-card">
+                <div class="cc-icon">🏘️</div>
+                <div class="cc-title">Property deeds</div>
+                <div class="cc-sub">Khata, deed refs, key contacts</div>
+              </div>
+              <div class="comp-card">
+                <div class="cc-icon">🛡️</div>
+                <div class="cc-title">LIC & Insurance</div>
+                <div class="cc-sub">Policy details, payout instructions</div>
+              </div>
+              <div class="comp-card">
+                <div class="cc-icon">💎</div>
+                <div class="cc-title">Valuables</div>
+                <div class="cc-sub">Locker appraisals, gold, jewellery</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="right-panel">
+          <div data-reveal="r">
+            <div class="sec-head">LIVE COMPARTMENT PREVIEW</div>
+            <div class="alert alert-blue"><i class="ti ti-shield-lock"></i>All items shown below are encrypted. Your browser decrypts them locally — nothing leaves your device.</div>
+            <div class="encrypt-demo">
+              <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.12em;margin-bottom:10px;">DOMESTIC NOMINEES SPLIT LEDGER</div>
+              <div class="enc-row">
+                <span class="enc-label">🏦 HDFC Balance Claims</span>
+                <span class="enc-arrow">→</span>
+                <span class="enc-val enc">C7FdEa942... (Encrypted)</span>
+              </div>
+              <div class="enc-row">
+                <span class="enc-label">🏦 SBI Deposit Custody</span>
+                <span class="enc-arrow">→</span>
+                <span class="enc-val enc">Df9381Ka... (Encrypted)</span>
+              </div>
+              <div class="enc-row">
+                <span class="enc-label">💳 Card Autopays</span>
+                <span class="enc-arrow">→</span>
+                <span class="enc-val enc">•••• •••• •••• ••••</span>
+              </div>
+            </div>
+            <div class="code-block">
+<span class="cm">// Client-side decryption only</span>
+<span class="kw">session_key</span> = <span class="kw">PBKDF2</span>(<span class="val">your_answers</span>, <span class="val">salt</span>, <span class="w">250000</span>)
+<span class="out">plaintext</span> = <span class="kw">AES-256-GCM</span>.<span class="kw">decrypt</span>(
+  ciphertext, <span class="kw">session_key</span>
+)
+<span class="cm">// Server sees: encrypted blobs only</span></div>
+            <div class="alert alert-green" style="margin-bottom:0"><i class="ti ti-check"></i>This vault stores document references and instructions. Keep signed originals with your attorney or in a physical safe.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 3: HOW THE SECURITY WORKS ─── -->
+    <div class="screen" id="s3">
+      <div class="two-col">
+        <div class="left-panel">
+          <div data-reveal>
+            <div class="screen-label">// 03 · SECURITY PROTOCOL</div>
+            <h1 class="screen-h1">Nobody can read<br>your vault. <span>Not even us.</span></h1>
+            <p class="screen-sub">This is not a promise. It is a mathematical fact. Your encryption key is derived from your personal answers inside your browser — it never reaches any server.</p>
+          </div>
+          <div class="step-list" data-reveal style="transition-delay:.1s">
+            <div class="step-item">
+              <div class="step-num">1</div>
+              <div><h4>You answer 10 personal questions</h4><p>Questions only you know — first car, childhood pet, first concert. Answers never leave your browser. No network transmission.</p></div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">2</div>
+              <div><h4>Each answer is SHA-256 hashed + salted</h4><p>A wrong answer produces a completely different fingerprint. The original is unrecoverable from the hash.</p></div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">3</div>
+              <div><h4>250,000 rounds of PBKDF2 hardening</h4><p>This deliberately takes ~0.5 seconds. A hacking bot testing millions of passwords per second is slowed to hundreds. GPU clusters defeated.</p></div>
+            </div>
+            <div class="step-item">
+              <div class="step-num">4</div>
+              <div><h4>HMAC-SHA256 Pepper — the final shield</h4><p>A secret Pepper stored only in server ENV config — not the database. Full database theft is useless without it. Three independent barriers.</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="right-panel">
+          <div data-reveal="r">
+            <div class="sec-head">TRIPLE BARRIER PROTECTION</div>
+            <div class="ob-card" style="margin-bottom:8px;border-color:rgba(239,68,68,.25);">
+              <div style="font-family:var(--mono);font-size:9px;color:#f87171;letter-spacing:.12em;margin-bottom:8px;">ATTACKER SCENARIO: DATABASE STOLEN</div>
+              <div class="pbar-row" style="margin-bottom:6px;"><span class="pbar-label">Gets: Encrypted blobs</span><div class="pbar-track"><div class="pbar-fill" style="width:100%;background:#1e2a40;"></div></div><span class="pbar-note" style="color:var(--muted);">Useless</span></div>
+              <div class="pbar-row" style="margin-bottom:6px;"><span class="pbar-label">Needs: Your 10 answers</span><div class="pbar-track"><div class="pbar-fill" style="width:0%;background:var(--red);"></div></div><span class="pbar-note" style="color:#f87171;">Missing</span></div>
+              <div class="pbar-row"><span class="pbar-label">Needs: Server ENV Pepper</span><div class="pbar-track"><div class="pbar-fill" style="width:0%;background:var(--red);"></div></div><span class="pbar-note" style="color:#f87171;">Missing</span></div>
+              <div class="alert alert-amber" style="margin-top:10px;margin-bottom:0;"><i class="ti ti-ban"></i>Result: Attacker gets nothing. All three barriers must be breached simultaneously — no known attack achieves this.</div>
+            </div>
+            <div class="divider"></div>
+            <div class="sec-head">WHAT HAPPENS IF SOMEONE GUESSES?</div>
+            <div style="display:flex;gap:10px;margin-bottom:12px;">
+              <div style="flex:1;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);border-radius:var(--r2);padding:12px;text-align:center;">
+                <div style="font-family:var(--mono);font-size:28px;font-weight:700;color:var(--amber);">3</div>
+                <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px;">MAX ATTEMPTS</div>
+              </div>
+              <div style="flex:2;display:flex;flex-direction:column;gap:6px;justify-content:center;">
+                <div class="badge badge-amber" style="width:fit-content;"><i class="ti ti-alert-triangle" style="font-size:10px;"></i> Attempt 1 — Counter starts</div>
+                <div class="badge badge-amber" style="width:fit-content;"><i class="ti ti-alert-triangle" style="font-size:10px;"></i> Attempt 2 — Warning issued</div>
+                <div class="badge badge-red" style="width:fit-content;"><i class="ti ti-skull" style="font-size:10px;"></i> Attempt 3 — isCorrupted=true</div>
+              </div>
+            </div>
+            <div class="code-block" style="margin-bottom:0;">
+<span class="cm">// After 3rd failed attempt:</span>
+<span class="kw">vault</span>.<span class="val">isCorrupted</span> = <span class="w">true</span>
+<span class="cm">// Standard login: PERMANENTLY DISABLED</span>
+<span class="cm">// Only Master Key can restore access</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 4: HEIR ACCESS & ROLES ─── -->
+    <div class="screen" id="s4">
+      <div class="two-col">
+        <div class="left-panel">
+          <div data-reveal>
+            <div class="screen-label">// 04 · HEIR ACCESS CONTROL</div>
+            <h1 class="screen-h1">Your family gets<br><span>exactly what you decide.</span></h1>
+            <p class="screen-sub">Designate heirs with surgical precision. Each person sees only the partitions you grant them — access is cryptographic, not just a software permission.</p>
+          </div>
+          <div data-reveal style="transition-delay:.1s">
+            <div class="sec-head">DESIGNATED HEIRS</div>
+            <div class="heir-row">
+              <div class="heir-av" style="background:rgba(0,194,199,.15);color:var(--teal);">AS</div>
+              <div style="flex:1;"><div class="heir-title">Ananya Sharma</div><div class="heir-sub">Spouse · Primary heir · Full access</div></div>
+              <span class="badge badge-green">Tier 1</span>
+            </div>
+            <div class="heir-row">
+              <div class="heir-av" style="background:rgba(167,139,250,.12);color:var(--violet);">RS</div>
+              <div style="flex:1;"><div class="heir-title">Rohan Sharma</div><div class="heir-sub">Son · Successor trustee · Read only</div></div>
+              <span class="badge badge-violet">Tier 2</span>
+            </div>
+            <div class="heir-row">
+              <div class="heir-av" style="background:rgba(245,158,11,.1);color:var(--amber);">PS</div>
+              <div style="flex:1;"><div class="heir-title">Priya Sharma</div><div class="heir-sub">Daughter · Insurance beneficiary</div></div>
+              <span class="badge badge-amber">Tier 2</span>
+            </div>
+            <div class="divider"></div>
+            <div class="sec-head">WHAT EACH HEIR CAN SEE</div>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);">
+                <span>Will & trust documents</span><span class="badge badge-green">Ananya</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);">
+                <span>Insurance policy details</span><span class="badge badge-green">All heirs</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--border);">
+                <span>Real estate deeds</span><span class="badge badge-green">Ananya</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);padding:6px 0;">
+                <span>Bank account keys</span><span class="badge badge-violet">Rohan · after 30d</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="right-panel">
+          <div data-reveal="r">
+            <div class="sec-head">HKDF PARTITION ISOLATION</div>
+            <div class="alert alert-blue" style="margin-bottom:14px;"><i class="ti ti-shield"></i>Each vault category is encrypted with its own independent 256-bit key. Knowing the Banking key reveals zero bits of the Legal key — mathematical proof, not software permission.</div>
+            <div class="code-block">
+<span class="cm">// Each partition = independent key</span>
+<span class="kw">SK_banking</span> = <span class="kw">HKDF</span>(<span class="val">session_key</span>, <span class="out">"banking"</span>)
+<span class="kw">SK_legal</span>   = <span class="kw">HKDF</span>(<span class="val">session_key</span>, <span class="out">"legal"</span>)
+<span class="cm">// SK_banking reveals NOTHING about SK_legal</span></div>
+            <div class="divider"></div>
+            <div class="sec-head">EMERGENCY ACCESS PIN</div>
+            <div class="ob-card" style="border-color:rgba(239,68,68,.25);">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);">🔑</div>
+                <div>
+                  <div class="ob-card-title" style="color:#f87171;">Emergency access PIN</div>
+                  <div class="ob-card-sub">A one-time PIN lets your primary heir unlock the vault without your Master Key — but only after the estate trigger fires. It cannot be used before.</div>
+                </div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="sec-head">MERKLE AUDIT CHAIN</div>
+            <div class="ob-card">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(0,194,199,.1);border:1px solid rgba(0,194,199,.2);">⛓️</div>
+                <div>
+                  <div class="ob-card-title">Every access is logged</div>
+                  <div class="ob-card-sub">SHA-256 hash-linked audit chain. Every READ, WRITE, SHARE event is tamper-evident and exportable as legal evidence for probate proceedings.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 5: ESTATE TRIGGER & CHECK-IN ─── -->
+    <div class="screen" id="s5">
+      <div class="two-col">
+        <div class="left-panel">
+          <div data-reveal>
+            <div class="screen-label">// 05 · GUARDIAN DISPATCH</div>
+            <h1 class="screen-h1">30 days. Then<br><span>the vault hands off.</span></h1>
+            <p class="screen-sub">The Countdown Check-in Trigger is your automated estate handoff system. Check in regularly to keep the vault locked. If you stop — your heirs receive access step by step.</p>
+          </div>
+          <div data-reveal style="transition-delay:.1s">
+            <div class="timer-ring">
+              <svg viewBox="0 0 120 120">
+                <circle class="timer-track" cx="60" cy="60" r="50"/>
+                <circle class="timer-fill" cx="60" cy="60" r="50"/>
+                <text x="60" y="56" text-anchor="middle" font-family="Courier New" font-size="18" font-weight="bold" fill="#5b6ef5">12</text>
+                <text x="60" y="70" text-anchor="middle" font-family="Courier New" font-size="9" fill="#64748b">DAYS LEFT</text>
+              </svg>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-family:var(--mono);font-size:10px;color:var(--muted);">CHECK-IN PROGRESS</span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--blue2);">18/30 DAYS USED</span>
+              </div>
+              <div class="pbar-track" style="height:8px;margin-bottom:6px;"><div class="pbar-fill" style="width:60%;background:var(--blue);"></div></div>
+              <div style="font-size:11px;color:var(--muted);">Trigger interval: 30 days of no check-in</div>
+            </div>
+            <div class="step-list">
+              <div class="step-item">
+                <div class="step-num">1</div>
+                <div><h4>Heir notification sent</h4><p>Ananya Sharma receives a secure email with instructions.</p></div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">2</div>
+                <div><h4>48-hour grace period</h4><p>A final alert in case you simply forgot to check in.</p></div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">3</div>
+                <div><h4>Vault access released</h4><p>Tier 1 heir unlocks estate documents using emergency PIN.</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="right-panel">
+          <div data-reveal="r">
+            <div class="sec-head">DYNAMIC ESCROW DISPATCH FLOW</div>
+            <div class="flow-row">
+              <div class="flow-box active">
+                <div class="fb-icon">📂</div>
+                <div class="fb-step">STEP 1</div>
+                <div class="fb-title">Catalog</div>
+                <div class="fb-sub">Simple & complex assets</div>
+              </div>
+              <div class="flow-arr"><i class="ti ti-arrow-right"></i></div>
+              <div class="flow-box">
+                <div class="fb-icon">🔒</div>
+                <div class="fb-step">STEP 2</div>
+                <div class="fb-title">Local lock</div>
+                <div class="fb-sub">Browser IndexedDB</div>
+              </div>
+              <div class="flow-arr"><i class="ti ti-arrow-right"></i></div>
+              <div class="flow-box">
+                <div class="fb-icon">⏱️</div>
+                <div class="fb-step">STEP 3</div>
+                <div class="fb-title">Countdown</div>
+                <div class="fb-sub">30-day check-in</div>
+              </div>
+              <div class="flow-arr"><i class="ti ti-arrow-right"></i></div>
+              <div class="flow-box">
+                <div class="fb-icon">👨‍👩‍👧</div>
+                <div class="fb-step">STEP 4</div>
+                <div class="fb-title">Handoff</div>
+                <div class="fb-sub">Decrypted release</div>
+              </div>
+            </div>
+            <div class="divider"></div>
+            <div class="sec-head">ASSET COVERAGE</div>
+            <div class="pbar-row"><span class="pbar-label">Everyday use cases</span><div class="pbar-track"><div class="pbar-fill" style="width:55%;background:var(--blue);"></div></div><span class="pbar-note" style="color:var(--blue2);">55%</span></div>
+            <div class="pbar-row"><span class="pbar-label">Primary family estate</span><div class="pbar-track"><div class="pbar-fill" style="width:45%;background:var(--teal);"></div></div><span class="pbar-note" style="color:var(--teal);">45%</span></div>
+            <div class="divider"></div>
+            <div class="sec-head">SEALED LEGACY LETTER</div>
+            <div class="ob-card">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.2);">💌</div>
+                <div>
+                  <div class="ob-card-title">Letter to family</div>
+                  <div class="ob-card-sub">Encrypted and sealed. Revealed only after the estate trigger fires. Write specific wishes for personal items, messages for each heir.</div>
+                </div>
+              </div>
+              <div class="tag-row">
+                <span class="badge badge-violet">Encrypted sealed</span>
+                <span class="badge badge-green">Released on trigger</span>
+              </div>
+            </div>
+            <div class="alert alert-amber" style="margin-top:12px;margin-bottom:0;"><i class="ti ti-bell"></i>You'll receive reminder notifications before the check-in window closes. Never miss a deadline.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 6: AUTHORITIES & LEGAL ─── -->
+    <div class="screen" id="s6">
+      <div class="full-panel" style="max-width:900px;margin:0 auto;width:100%;">
+        <div data-reveal>
+          <div class="screen-label">// 06 · LEGAL COMPULSION</div>
+          <h1 class="screen-h1" style="margin-bottom:8px;">A court order gets them<br><span>nothing useful.</span></h1>
+          <p class="screen-sub" style="max-width:600px;">WhyOrVault is built so that even if every server we own is seized by any government authority, no plaintext data is recoverable. This is mathematics, not policy.</p>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:24px;" data-reveal style="transition-delay:.1s">
+          <div style="background:var(--card);border:1px solid rgba(34,197,94,.25);border-radius:var(--r);padding:20px;">
+            <div style="font-size:28px;margin-bottom:8px;">🧑‍💻</div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;margin-bottom:6px;">HACKER STEALS DB</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Gets nothing useful</div>
+            <div style="font-size:11px;color:var(--muted);line-height:1.5;">Encrypted blobs + HMAC hash + salt. Still needs your 10 answers + ENV Pepper. Two independent barriers remain.</div>
+            <div class="badge badge-green" style="margin-top:10px;"><i class="ti ti-check" style="font-size:10px;"></i> BLOCKED</div>
+          </div>
+          <div style="background:var(--card);border:1px solid rgba(245,158,11,.25);border-radius:var(--r);padding:20px;">
+            <div style="font-size:28px;margin-bottom:8px;">⚖️</div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;margin-bottom:6px;">COURT ORDER SERVED</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">We comply. You're safe.</div>
+            <div style="font-size:11px;color:var(--muted);line-height:1.5;">We produce everything we hold. The result: AES-256-GCM ciphertext requiring your session key. We don't have it.</div>
+            <div class="badge badge-amber" style="margin-top:10px;">NOTHING DECRYPTABLE</div>
+          </div>
+          <div style="background:var(--card);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:20px;">
+            <div style="font-size:28px;margin-bottom:8px;">👁️</div>
+            <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em;margin-bottom:6px;">INSIDER THREAT</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Even WhyOr can't read it</div>
+            <div style="font-size:11px;color:var(--muted);line-height:1.5;">Our engineers see the same thing as any attacker — ciphertext. Session key is in your browser, not our servers.</div>
+            <div class="badge badge-red" style="margin-top:10px;">ARCHITECTURALLY IMPOSSIBLE</div>
+          </div>
+        </div>
+        <div style="background:rgba(91,110,245,.08);border:1px solid rgba(91,110,245,.2);border-radius:var(--r);padding:20px 24px;display:flex;gap:16px;align-items:flex-start;" data-reveal style="transition-delay:.2s">
+          <div style="font-size:28px;flex-shrink:0;">📡</div>
+          <div>
+            <div style="font-size:14px;font-weight:600;color:var(--white);margin-bottom:6px;">Real-world precedent: Signal Messenger</div>
+            <div style="font-size:13px;color:var(--muted);line-height:1.65;">Signal was subpoenaed twice by the US Department of Justice (2021 and 2022). Signal fully complied. What they produced: account creation date and last connection time. Zero message content. Zero encryption keys. That is zero-knowledge architecture in action. WhyOrVault is built on the same principle.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 7: SECURITY CHECKLIST ─── -->
+    <div class="screen" id="s7">
+      <div class="two-col">
+        <div class="left-panel">
+          <div data-reveal>
+            <div class="screen-label">// 07 · YOUR SECURITY PROTOCOL</div>
+            <h1 class="screen-h1">Do these things.<br><span>Stay protected.</span></h1>
+            <p class="screen-sub">Encryption only works if you follow these operational steps. Each item is the difference between a vault that protects you and one that doesn't.</p>
+          </div>
+          <div data-reveal style="transition-delay:.1s">
+            <div class="check-item">
+              <div class="check-box done"><i class="ti ti-check" style="font-size:10px;"></i></div>
+              <div><div class="check-title">Store your Master Key physically</div><div class="check-sub">Fireproof safe, bank lockbox, or your lawyer's vault. Never photograph it. If lost with all 10 answers: no recovery possible.</div></div>
+            </div>
+            <div class="check-item">
+              <div class="check-box done"><i class="ti ti-check" style="font-size:10px;"></i></div>
+              <div><div class="check-title">Distribute 3 Shamir shares to 3 locations</div><div class="check-sub">You + trusted family member + attorney. Any 2 of 3 reconstruct the recovery token. Losing one share is safe.</div></div>
+            </div>
+            <div class="check-item">
+              <div class="check-box done"><i class="ti ti-check" style="font-size:10px;"></i></div>
+              <div><div class="check-title">Set up your Duress Vault</div><div class="check-sub">A secondary vault that opens with a different passphrase showing decoy content. Your real vault becomes cryptographically undetectable.</div></div>
+            </div>
+            <div class="check-item">
+              <div class="check-box warn"><i class="ti ti-alert-triangle" style="font-size:10px;"></i></div>
+              <div><div class="check-title">Use answers not searchable online</div><div class="check-sub">Avoid pet names or hometowns visible on social media. Use personal variations only you know.</div></div>
+            </div>
+            <div class="check-item">
+              <div class="check-box never"><i class="ti ti-x" style="font-size:10px;"></i></div>
+              <div><div class="check-title">Never save the Master Key digitally</div><div class="check-sub">A phone photo syncs to iCloud or Google Photos. Physical storage only — always.</div></div>
+            </div>
+            <div class="check-item">
+              <div class="check-box never"><i class="ti ti-x" style="font-size:10px;"></i></div>
+              <div><div class="check-title">Never share answers with anyone — including WhyOr</div><div class="check-sub">Legitimate support will never ask. Anyone asking is attempting fraud. We cannot decrypt your data regardless.</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="right-panel">
+          <div data-reveal="r">
+            <div class="sec-head">GF(2⁸) SHAMIR RECOVERY</div>
+            <div class="ob-card" style="margin-bottom:12px;">
+              <div style="font-size:13px;font-weight:600;color:var(--white);margin-bottom:6px;">3 keycard shares. Any 2 unlock.</div>
+              <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div style="flex:1;background:var(--faint);border-radius:6px;padding:10px;text-align:center;">
+                  <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--violet);">S₁</div>
+                  <div style="font-size:10px;color:var(--muted);margin-top:3px;">Your copy</div>
+                </div>
+                <div style="flex:1;background:var(--faint);border-radius:6px;padding:10px;text-align:center;">
+                  <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--violet);">S₂</div>
+                  <div style="font-size:10px;color:var(--muted);margin-top:3px;">Family member</div>
+                </div>
+                <div style="flex:1;background:var(--faint);border-radius:6px;padding:10px;text-align:center;">
+                  <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--violet);">S₃</div>
+                  <div style="font-size:10px;color:var(--muted);margin-top:3px;">Your attorney</div>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.5;">Below the threshold, each share reveals zero information — mathematically proven by Shamir's Secret Sharing over Galois Field GF(2⁸).</div>
+            </div>
+            <div class="divider"></div>
+            <div class="sec-head">DURESS VAULT</div>
+            <div class="code-block">
+<span class="cm">// Two vaults. Server can't tell which is real.</span>
+<span class="kw">real_key</span>   = <span class="kw">PBKDF2</span>(<span class="val">real_answers</span>, ...)
+<span class="kw">duress_key</span> = <span class="kw">PBKDF2</span>(<span class="val">decoy_answers</span>, ...)
+<span class="cm">// Both produce identical server structure</span>
+<span class="cm">// Examiner cannot determine which is real</span></div>
+            <div class="alert alert-green" style="margin-bottom:0;"><i class="ti ti-eye-off"></i>Your real vault's existence is cryptographically undetectable from the duress vault. Both produce identical encrypted structures on the server.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SCREEN 8: READY TO START ─── -->
+    <div class="screen" id="s8">
+      <div class="full-panel" style="align-items:center;justify-content:center;">
+        <div style="max-width:600px;width:100%;text-align:center;">
+          <div class="completion-graphic" data-reveal>
+            <div class="check-circle">🔐</div>
+            <div class="completion-title">Your vault is ready.</div>
+            <div class="completion-sub">You now understand what WhyOrVault does, why it exists, and how it keeps your data safe from every threat — hackers, authorities, and insider access.</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin:24px 0;" data-reveal style="transition-delay:.15s">
+            <div class="ob-card" style="text-align:left;">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);">✅</div>
+                <div><div class="ob-card-title">What to do first</div><div class="ob-card-sub">Start with Everyday Assets — bank nominees, card lists, home Wi-Fi. Takes 10 minutes. Your family will thank you.</div></div>
+              </div>
+            </div>
+            <div class="ob-card" style="text-align:left;">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(91,110,245,.1);border:1px solid rgba(91,110,245,.2);">🔑</div>
+                <div><div class="ob-card-title">Save your Master Key now</div><div class="ob-card-sub">Before adding any data, write down your 24-character Master Key and store it physically. This is your only recovery option.</div></div>
+              </div>
+            </div>
+            <div class="ob-card" style="text-align:left;">
+              <div class="ob-card-row">
+                <div class="ob-card-icon" style="background:rgba(0,194,199,.1);border:1px solid rgba(0,194,199,.2);">👨‍👩‍👧</div>
+                <div><div class="ob-card-title">Add your heirs</div><div class="ob-card-sub">Designate who gets access to which compartment. Set up the check-in timer. Your estate plan is complete.</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;justify-content:center;" data-reveal style="transition-delay:.3s">
+            <button class="btn btn-teal" id="btn-replay"><i class="ti ti-refresh"></i> Replay guide</button>
+            <button class="btn btn-primary btn-big" id="btn-enter" style="font-size:15px;padding:12px 28px;">Enter My Vault <i class="ti ti-arrow-right"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /stage -->
+
+  <!-- ═══ FOOTER NAV ═══ -->
+  <footer class="fnav">
+    <div class="fn-left">
+      <span class="fn-label" id="fn-num">SCREEN 1 OF 8</span>
+      <div class="fn-progress"><div class="fn-bar" id="fn-bar" style="width:12.5%;"></div></div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-ghost" id="btn-prev"><i class="ti ti-arrow-left"></i> Back</button>
+      <button class="btn btn-primary" id="btn-next">Next <i class="ti ti-arrow-right"></i></button>
+    </div>
+  </footer>
+
+</div><!-- /shell -->
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+const TOTAL = 8;
+let cur = 0;
+let exiting = false;
+
+const phases = [
+  'STATUS: PHASE I · DISCOVERY',
+  'STATUS: PHASE I · ASSET COMPARTMENTS',
+  'STATUS: PHASE II · ENCRYPTION PROTOCOL',
+  'STATUS: PHASE III · ACCESS CONTROL',
+  'STATUS: PHASE III · GUARDIAN DISPATCH',
+  'STATUS: PHASE IV · LEGAL PROTOCOL',
+  'STATUS: PHASE IV · SECURITY CHECKLIST',
+  'STATUS: COMPLETE · VAULT READY',
+];
+const nextLabels = ['Next →','Next →','Next →','Next →','Next →','Next →','Next →','Open Vault ↗'];
+
+const screens = document.querySelectorAll('.screen');
+const dots = document.getElementById('step-dots');
+const hdrPhase = document.getElementById('hdr-phase');
+const fnNum = document.getElementById('fn-num');
+const fnBar = document.getElementById('fn-bar');
+const btnNext = document.getElementById('btn-next');
+const btnPrev = document.getElementById('btn-prev');
+
+// ─── BUILD DOTS ───────────────────────────────────────────────────────────────
+for (let i=0;i<TOTAL;i++) {
+  const d = document.createElement('div');
+  d.className = 'sdot' + (i===0?' active':'');
+  dots.appendChild(d);
+}
+
+// ─── REVEAL ELEMENTS ──────────────────────────────────────────────────────────
+function revealScreen(idx) {
+  const s = screens[idx];
+  const els = s.querySelectorAll('[data-reveal]');
+  els.forEach((el,i) => {
+    el.classList.remove('shown');
+    setTimeout(() => el.classList.add('shown'), 80 + i*80);
+  });
+}
+
+// ─── GO TO SCREEN ─────────────────────────────────────────────────────────────
+function goTo(idx, dir=1) {
+  if (exiting || idx < 0 || idx >= TOTAL) return;
+  exiting = true;
+
+  const old = screens[cur];
+  old.classList.add('exit');
+  old.classList.remove('active');
+
+  setTimeout(() => {
+    old.classList.remove('exit');
+    cur = idx;
+    const next = screens[cur];
+    next.style.transform = `translateX(${dir > 0 ? '40px' : '-40px'})`;
+    next.classList.add('active');
+    setTimeout(() => { next.style.transform = ''; exiting = false; }, 20);
+    revealScreen(cur);
+    updateUI();
+  }, 300);
+}
+
+function updateUI() {
+  // dots
+  const sdots = dots.querySelectorAll('.sdot');
+  sdots.forEach((d,i) => {
+    d.className = 'sdot' + (i < cur ? ' done' : '') + (i===cur?' active':'');
+  });
+  // phase
+  hdrPhase.textContent = phases[cur];
+  // progress
+  fnNum.textContent = `SCREEN ${cur+1} OF ${TOTAL}`;
+  fnBar.style.width = ((cur+1)/TOTAL*100) + '%';
+  // buttons
+  btnPrev.style.opacity = cur===0 ? '0' : '1';
+  btnPrev.style.pointerEvents = cur===0 ? 'none' : 'auto';
+  btnNext.innerHTML = cur < TOTAL-1
+    ? 'Next <i class="ti ti-arrow-right"></i>'
+    : 'Enter Vault <i class="ti ti-arrow-right"></i>';
+  btnNext.className = cur < TOTAL-1 ? 'btn btn-primary' : 'btn btn-primary';
+  if(cur===TOTAL-1) btnNext.style.background='var(--teal)';
+  else btnNext.style.background='';
+}
+
+// ─── BUTTONS ──────────────────────────────────────────────────────────────────
+btnNext.addEventListener('click', () => {
+  if(cur===TOTAL-1) { window.location.href='/'; return; }
+  goTo(cur+1, 1);
+});
+btnPrev.addEventListener('click', () => goTo(cur-1, -1));
+document.getElementById('btn-skip').addEventListener('click', () => goTo(TOTAL-1, 1));
+document.getElementById('btn-replay').addEventListener('click', () => goTo(0, -1));
+document.getElementById('btn-enter').addEventListener('click', () => {
+  window.location.href='/';
+});
+
+// ─── KEYBOARD ─────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if(e.key==='ArrowRight'||e.key===' ') { e.preventDefault(); btnNext.click(); }
+  if(e.key==='ArrowLeft') { e.preventDefault(); btnPrev.click(); }
+});
+
+// ─── SWIPE ───────────────────────────────────────────────────────────────────
+let tx=0;
+document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX},{passive:true});
+document.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx;
+  if(Math.abs(dx)>50){dx<0?btnNext.click():btnPrev.click();}
+},{passive:true});
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+updateUI();
+revealScreen(0);
+
+// Animate strength bars when visible
+setTimeout(() => {
+  document.querySelectorAll('.pbar-fill').forEach(el => {
+    const w = el.style.width;
+    el.style.width = '0';
+    setTimeout(() => { el.style.width = w; }, 300);
+  });
+}, 100);
+</script>
+</body>
+</html>

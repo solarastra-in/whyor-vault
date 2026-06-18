@@ -137,6 +137,11 @@ async function startServer() {
     res.json({ status: "healthy", serverTime: new Date().toISOString() });
   });
 
+  // Serve the beautifully designed, interactive onboarding HTML preview route
+  app.get("/onboarding-preview", (req, res) => {
+    res.sendFile(path.join(process.cwd(), "public", "onboarding.html"));
+  });
+
   // Set up Vite development server middleware or production static asset server
   const distPath = path.join(process.cwd(), "dist");
   const useStatic = process.env.NODE_ENV === "production" && fs.existsSync(path.join(distPath, "index.html"));

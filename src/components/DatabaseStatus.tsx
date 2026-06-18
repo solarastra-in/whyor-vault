@@ -27,7 +27,7 @@ export default function DatabaseStatus({ variant = 'detailed' }: DatabaseStatusP
       const startTime = Date.now();
       try {
         // Simulate instant local-loop response if sandbox mode is active
-        if (typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox') {
+        if (typeof window !== 'undefined' && (import.meta as any).env?.VITE_APP_ENV === 'Sandbox') {
           setTimeout(() => {
             setLatency(3); // 3ms simulated reactive latency
             setStatus('connected');

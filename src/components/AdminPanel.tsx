@@ -40,7 +40,7 @@ interface PaymentTransaction {
   paymentGateway: string;
 }
 
-const isSandbox = typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox';
+const isSandbox = typeof window !== 'undefined' && (import.meta as any).env?.VITE_APP_ENV === 'Sandbox';
 
 export default function AdminPanel({
   systemConfig,
@@ -575,7 +575,8 @@ export default function AdminPanel({
       try {
       if (isSandbox) {
         const dbState = JSON.parse(localStorage.getItem('whyor_vault_sandbox_db_v2') || '{}');
-        for (const userId of Array.from(selectedVaults)) {
+        for (const rawUserId of Array.from(selectedVaults)) {
+          const userId = rawUserId as string;
           Object.keys(dbState).forEach(k => {
               if (k.includes(userId)) delete dbState[k];
           });
@@ -593,7 +594,7 @@ export default function AdminPanel({
       
       triggerNotification(`Deleting ${selectedVaults.size} vault configurations...`, "info");
       
-      const vaultsArray = Array.from(selectedVaults);
+      const vaultsArray = Array.from(selectedVaults) as string[];
       
       for (const userId of vaultsArray) {
         const configRef = doc(db, 'vaults', userId, 'vault', 'config');

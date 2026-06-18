@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 // --- CENTRALIZED SANDBOX / INTERACTIVE PREVIEW ENVIRONMENT EMULATOR ---
 const getIsSandbox = (): boolean => {
-  return typeof window !== 'undefined' && import.meta.env.VITE_APP_ENV === 'Sandbox';
+  return typeof window !== 'undefined' && (import.meta as any).env?.VITE_APP_ENV === 'Sandbox';
 };
 
 let activeAuthListeners: Array<(user: any | null) => void> = [];
@@ -369,7 +369,7 @@ import {
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
-  ChevronDown, ChevronUp, Sun, Moon, Menu
+  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
@@ -386,6 +386,7 @@ import { SECURITY_QUESTIONS } from './constants/questions';
 import AdminPanel from './components/AdminPanel';
 import { EntryModalContent } from './components/EntryModalContent';
 import PaywallModal from './components/PaywallModal';
+import OnboardingDiscovery from './components/OnboardingDiscovery';
 import { Coins, Wallet } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/error-handler';
 import DatabaseStatus from './components/DatabaseStatus';
@@ -2064,6 +2065,18 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
   const [drillError, setDrillError] = useState('');
   const [drillSuccess, setDrillSuccess] = useState(false);
   const [showDrillHelper, setShowDrillHelper] = useState(false);
+  const [explainMode, setExplainMode] = useState<'layman' | 'advanced'>('layman');
+  const [infoTab, setInfoTab] = useState<'why' | 'what' | 'how' | 'faq'>('what');
+  const [selectedPillar, setSelectedPillar] = useState<string>('simple_finance');
+  
+  // Interactive Simulator parameters
+  const [simIsEncrypted, setSimIsEncrypted] = useState(true);
+  const [simDialAngle, setSimDialAngle] = useState(0);
+  const [simLockerOpen, setSimLockerOpen] = useState(false);
+  const [simWifiRevealed, setSimWifiRevealed] = useState(false);
+  const [simFeedbackMsg, setSimFeedbackMsg] = useState('');
+  const [simCheckinDays, setSimCheckinDays] = useState(18);
+  const [simTriggerStatus, setSimTriggerStatus] = useState<'idle' | 'checkin_reset' | 'triggered'>('idle');
 
   useEffect(() => {
     // Automatically pre-populate default, highly-secure random keys on mount to ensure valid state
@@ -2309,16 +2322,16 @@ SAFEKEEPING PROTOCOL:
       animate={{ opacity: 1, scale: 1 }}
       className="min-h-screen flex items-center justify-center p-6 bg-slate-950"
     >
-      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden">
+      <div className={cn("w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden transition-all duration-300", step === 'intro' ? "max-w-5xl" : "max-w-2xl")}>
         <div className="p-8 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
            <div>
              <h2 className="text-xl font-black text-white uppercase tracking-tight">Vault Genesis Protocol</h2>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Status: Phase {step === 'intro' ? 'I' : step === 'master_key' ? 'II' : 'III'}</p>
+             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Status: Phase {step === 'intro' ? 'I: Discovery' : step === 'master_key' ? 'II: Security Keys' : 'III: Escrow questions'}</p>
            </div>
            <div className="flex items-center gap-4">
              <div className="flex gap-1">
-               <div key="step-1" className={cn("w-2 h-2 rounded-full", step === 'intro' ? "bg-indigo-500" : "bg-slate-800")} />
-               <div key="step-2" className={cn("w-2 h-2 rounded-full", step === 'master_key' ? "bg-indigo-500" : "bg-slate-800")} />
+               <div key="step-1" className={cn("w-2 h-2 rounded-full", step === 'intro' ? "bg-indigo-500 text-indigo-500 animate-pulse" : "bg-slate-800")} />
+               <div key="step-2" className={cn("w-2 h-2 rounded-full", step === 'master_key' ? "bg-indigo-500 text-indigo-500" : "bg-slate-800")} />
                <div key="step-3" className={cn("w-2 h-2 rounded-full", step === 'questions' ? "bg-indigo-500" : "bg-slate-800")} />
              </div>
              <button 
@@ -2331,34 +2344,934 @@ SAFEKEEPING PROTOCOL:
                Logout
              </button>
            </div>
-        </div>
-
-        <div className="p-12">
+         </div>
+         <div className={cn("transition-all duration-300", step === 'intro' ? "p-6 md:p-8" : "p-12")}>
           {step === 'intro' && (
-            <div className="space-y-8 animate-fade-in">
-              <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <ShieldCheck className="h-8 w-8 text-indigo-400" />
+            <OnboardingDiscovery onNext={() => setStep('master_key')} onLogout={onLogout} />
+          )}
+          {step === 'intro_old_disabled' && (
+            <div className="space-y-8 animate-fade-in text-left">
+              
+              {/* BRAND NEW IMPACTFUL CORE HERO BLOCK */}
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950/40 p-6 md:p-8 border border-slate-800">
+                <div className="relative z-10 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-indigo-400 tracking-widest bg-indigo-500/15 border border-indigo-500/20 px-2.5 py-1 rounded-full">User Guide • WhyOrVault Protocol</span>
+                    <span className="text-[10px] font-black uppercase text-emerald-400 tracking-widest bg-emerald-500/15 border border-emerald-500/20 px-2.5 py-1 rounded-full">Status: Ready</span>
+                  </div>
+                  <h1 className="text-2xl md:text-3xl font-black text-white leading-tight tracking-tight uppercase">
+                    Your complete estate vault,<br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">explained simply.</span>
+                  </h1>
+                  <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
+                    WhyOrVault empowers you to store, structure, and securely delegate access to everything that matters—high-value property deeds, private wills & trusts, life insurance payouts, digital wallets, and emotional letters—all within a zero-knowledge local client node.
+                  </p>
+                  
+                  {/* Styled Pills from PDF */}
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <span className="text-[10px] items-center gap-1.5 flex font-bold text-slate-300 bg-slate-950/80 border border-slate-800/80 rounded-full px-3 py-1">
+                      🔐 Client-Side Cryptography
+                    </span>
+                    <span className="text-[10px] items-center gap-1.5 flex font-bold text-slate-300 bg-slate-950/80 border border-slate-800/80 rounded-full px-3 py-1">
+                      📋 Living Wills & Trust Mapping
+                    </span>
+                    <span className="text-[10px] items-center gap-1.5 flex font-bold text-slate-300 bg-slate-950/80 border border-slate-800/80 rounded-full px-3 py-1">
+                      👥 Multi-Tier Heir Release
+                    </span>
+                    <span className="text-[10px] items-center gap-1.5 flex font-bold text-slate-300 bg-slate-950/80 border border-slate-800/80 rounded-full px-3 py-1">
+                      ⏰ 30-Day Check-In Trigger
+                    </span>
+                  </div>
+                </div>
+                <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
               </div>
-              <div className="text-center">
-                <h3 className="text-2xl font-bold text-white mb-4">Zero-Knowledge Sovereignty</h3>
-                <p className="text-slate-400 leading-relaxed text-sm max-w-md mx-auto">
-                  You are about to generate a cryptographically unique vault. This process transforms your identity into a non-retrievable encryption root. Once deployed, <span className="text-white font-bold">no one</span> except you can access this data.
-                </p>
+
+              {/* CORE HUB LAYOUT GRID */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+                
+                {/* LEFT DISCOVERY OPTIONS HUB (5 cols) */}
+                <div className="lg:col-span-5 flex flex-col justify-between space-y-6">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-black uppercase text-slate-400 tracking-widest">Discovery Hub</h3>
+                      <span className="text-[9px] font-mono text-indigo-400 font-extrabold uppercase bg-indigo-950/40 p-1.5 rounded border border-indigo-900/30">Layman Toggle Active</span>
+                    </div>
+
+                    {/* LAYMAN MODE & ADVANCED TOGGLE */}
+                    <div className="flex bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setExplainMode('layman')}
+                        className={cn(
+                          "flex-1 text-center py-2 rounded-lg text-[10px] font-bold uppercase transition-all tracking-wider cursor-pointer",
+                          explainMode === 'layman' 
+                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-950/30" 
+                            : "text-slate-400 hover:text-slate-200"
+                        )}
+                      >
+                        👋 LAYMAN (SIMPLE SENSE)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setExplainMode('advanced')}
+                        className={cn(
+                          "flex-1 text-center py-2 rounded-lg text-[10px] font-bold uppercase transition-all tracking-wider cursor-pointer",
+                          explainMode === 'advanced' 
+                            ? "bg-indigo-600 text-white shadow-md shadow-indigo-950/30" 
+                            : "text-slate-400 hover:text-slate-200"
+                        )}
+                      >
+                        ⚙️ DEEP-TECH (ADVANCED)
+                      </button>
+                    </div>
+                    
+                    {/* Visual custom sidebar tabs */}
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => setInfoTab('why')}
+                        className={cn(
+                          "w-full text-left p-4 rounded-xl border flex items-center justify-between transition-all group cursor-pointer",
+                          infoTab === 'why' 
+                            ? "bg-slate-950 border-indigo-500 shadow-lg shadow-indigo-950/35" 
+                            : "bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center border transition-colors",
+                            infoTab === 'why' ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400" : "bg-slate-950 border-slate-800 text-slate-500 group-hover:text-slate-300"
+                          )}>
+                            <Shield className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className={cn("text-xs font-black uppercase tracking-wider", infoTab === 'why' ? "text-white" : "text-slate-400 group-hover:text-slate-200")}>
+                              {explainMode === 'layman' ? "👉 WHY it keeps things easy" : "WHY Zero-Knowledge"}
+                            </h4>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {explainMode === 'layman' ? "Your private key safe in plain terms" : "Sovereignty & Offline Client Nodes"}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", infoTab === 'why' ? "text-indigo-400 translate-x-1" : "text-slate-600")} />
+                      </button>
+
+                      <button 
+                        onClick={() => setInfoTab('what')}
+                        className={cn(
+                          "w-full text-left p-4 rounded-xl border flex items-center justify-between transition-all group cursor-pointer",
+                          infoTab === 'what' 
+                            ? "bg-slate-950 border-cyan-500 shadow-lg shadow-cyan-950/35" 
+                            : "bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center border transition-colors",
+                            infoTab === 'what' ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400" : "bg-slate-950 border-slate-800 text-slate-500 group-hover:text-slate-300"
+                          )}>
+                            <Layers className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className={cn("text-xs font-black uppercase tracking-wider", infoTab === 'what' ? "text-white" : "text-slate-400 group-hover:text-slate-200")}>
+                              {explainMode === 'layman' ? "👉 WHAT you can store" : "WHAT Secure Pillars Map"}
+                            </h4>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {explainMode === 'layman' ? "Cards, cash, lockers & simple agreements" : "Real Estate, Wills, Life Insurance & IP"}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", infoTab === 'what' ? "text-cyan-400 translate-x-1" : "text-slate-600")} />
+                      </button>
+
+                      <button 
+                        onClick={() => setInfoTab('how')}
+                        className={cn(
+                          "w-full text-left p-4 rounded-xl border flex items-center justify-between transition-all group cursor-pointer",
+                          infoTab === 'how' 
+                            ? "bg-slate-950 border-emerald-500 shadow-lg shadow-emerald-950/35" 
+                            : "bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center border transition-colors",
+                            infoTab === 'how' ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-slate-950 border-slate-800 text-slate-500 group-hover:text-slate-300"
+                          )}>
+                            <Key className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className={cn("text-xs font-black uppercase tracking-wider", infoTab === 'how' ? "text-white" : "text-slate-400 group-hover:text-slate-200")}>
+                              {explainMode === 'layman' ? "👉 HOW quick setup takes" : "HOW Simple Setup is"}
+                            </h4>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {explainMode === 'layman' ? "Simple 10-Minute Guide" : "Custom Keys, Shamir & Drills"}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", infoTab === 'how' ? "text-emerald-400 translate-x-1" : "text-slate-600")} />
+                      </button>
+
+                      <button 
+                        onClick={() => setInfoTab('faq')}
+                        className={cn(
+                          "w-full text-left p-4 rounded-xl border flex items-center justify-between transition-all group cursor-pointer",
+                          infoTab === 'faq' 
+                            ? "bg-slate-950 border-amber-500 shadow-lg shadow-amber-950/35" 
+                            : "bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "h-8 w-8 rounded-lg flex items-center justify-center border transition-colors",
+                            infoTab === 'faq' ? "bg-amber-500/10 border-amber-500/30 text-amber-500" : "bg-slate-950 border-slate-800 text-slate-500 group-hover:text-slate-300"
+                          )}>
+                            <Lightbulb className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className={cn("text-xs font-black uppercase tracking-wider", infoTab === 'faq' ? "text-white" : "text-slate-400 group-hover:text-slate-200")}>
+                              {explainMode === 'layman' ? "👉 FAQ plain answers" : "FAQ Security Guides"}
+                            </h4>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {explainMode === 'layman' ? "Common everyday questions" : "Common Questions & Handover"}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", infoTab === 'faq' ? "text-amber-500 translate-x-1" : "text-slate-600")} />
+                      </button>
+                    </div>
+
+                    {/* Explanatory detail under active tab selection */}
+                    <div className="mt-4 p-4 bg-slate-950/40 border border-slate-850 rounded-xl relative overflow-hidden">
+                      {infoTab === 'why' && (
+                        <div>
+                          {explainMode === 'layman' ? (
+                            <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                              🏡 <strong>Sovereignty Explained Simply:</strong> Standard apps keep your papers on central servers in the cloud. If they get hacked or go bankrupt under corporate custody, you or your heirs get locked out. We do things differently—all your locks are managed <strong>inside your own computer browser</strong>. No remote companies can peep, modify, or block your access!
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                              🔐 <strong>Zero-Knowledge Vectors:</strong> All decryption keys are generated locally. Utilizing Salt Derivations (PBKDF2) and local client storage, your credentials transform into self-protecting partitions completely immune to subpoena.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      
+                      {infoTab === 'what' && (
+                        <div>
+                          {explainMode === 'layman' ? (
+                            <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                              💳 <strong>Simple & Everyday Utility:</strong> Store simple items like <strong>credit cards emergency directories</strong>, <strong>bank account nominees</strong>, <strong>utility bills cycles</strong>, and <strong>home safe locations</strong> alongside big estate documents. Select items on the mobile screen simulator to explore!
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                              📊 <strong>Comprehensive Structural Maps:</strong> Layout coordinates and designated heir permissions. Click individual components in our phone preview to inspect real-time digital and physical assets indexing.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      
+                      {infoTab === 'how' && (
+                        <div>
+                          {explainMode === 'layman' ? (
+                            <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                              🛠️ <strong>The 10-Minute Setup Journey:</strong> (1) Click to generate a personal master code, (2) Write it on dry physical paper, (3) Take our simple test to ensure you wrote it correctly, (4) Setup the automated 30-day interval timer and rest easy!
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                              ⚙️ <strong>Setup Verification Sequence:</strong> PBKDF2 Master stretch derivations, offline physical QR print registration, secure Shamir check character test, and automated relative timers activations.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      
+                      {infoTab === 'faq' && (
+                        <div>
+                          {explainMode === 'layman' ? (
+                            <p className="text-[11px] text-slate-300 leading-relaxed font-sans">
+                              💬 <strong>Peace of mind questions:</strong> Find plain layman responses regarding passwords recovery, family check-in timers, out-of-coverage traveling modes, and safe locks override procedures.
+                            </p>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                              🔍 <strong>Operational Mechanics:</strong> Understand offline browser sandboxing, IndexDB partitioning vectors, duress panic overwrites, and escrow handoff schedules.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PROMINENT INTERACTIVE VISUAL PIPELINE FLOW GRAPH & ASSET DONUT RATIOS */}
+                  <div className="bg-slate-950/60 border border-slate-850 p-4 rounded-xl space-y-4">
+                    <div className="flex justify-between items-center pb-2 border-b border-slate-900">
+                      <div>
+                        <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block">🔒 Dynamic Safety Flow Chart</span>
+                        <span className="text-[8px] text-slate-500 block font-mono">Simple & Complex assets offline cycle</span>
+                      </div>
+                      <span className="text-[8.5px] font-mono text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-550/20 px-1.5 py-0.5 rounded animate-pulse">active protection</span>
+                    </div>
+
+                    {/* SVG/CSS Flow Pipe Graphic */}
+                    <div className="grid grid-cols-4 gap-1.5 text-center py-2 relative">
+                      <div className="absolute top-[28%] left-[10%] right-[10%] h-[1.5px] bg-slate-800/80 z-0 hidden sm:block" />
+
+                      <div className="relative z-10 p-1.5 bg-slate-900/95 border border-slate-800 rounded-lg group hover:border-slate-700 transition-colors">
+                        <div className="h-6 w-6 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center mx-auto text-xs text-indigo-400 mb-1 leading-none">💳</div>
+                        <span className="text-[8px] font-extrabold text-white block uppercase leading-tight">1. Assets</span>
+                        <p className="text-[6.5px] text-slate-500 leading-none mt-0.5">Cards, Cash, Wills</p>
+                      </div>
+
+                      <div className="relative z-10 p-1.5 bg-slate-900/95 border border-indigo-500/30 rounded-lg group shadow-md shadow-indigo-950/25">
+                        <div className="h-6 w-6 rounded-full bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center mx-auto text-xs text-cyan-400 mb-1 leading-none font-sans">🔐</div>
+                        <span className="text-[8px] font-extrabold text-white block uppercase leading-tight">2. Browser</span>
+                        <p className="text-[6.5px] text-slate-500 leading-none mt-0.5">AES-256 Local State</p>
+                      </div>
+
+                      <div className="relative z-10 p-1.5 bg-slate-900/95 border border-slate-800 rounded-lg group hover:border-slate-700 transition-colors">
+                        <div className="h-6 w-6 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto text-xs text-amber-500 mb-1 leading-none font-sans">⏰</div>
+                        <span className="text-[8px] font-extrabold text-white block uppercase leading-tight">3. Trigger</span>
+                        <p className="text-[6.5px] text-slate-500 leading-none mt-0.5">Auto-Timer Reset</p>
+                      </div>
+
+                      <div className="relative z-10 p-1.5 bg-slate-900/95 border border-slate-800 rounded-lg group hover:border-slate-700 transition-colors">
+                        <div className="h-6 w-6 rounded-full bg-purple-500/15 border border-purple-500/30 flex items-center justify-center mx-auto text-xs text-purple-400 mb-1 leading-none font-sans">👥</div>
+                        <span className="text-[8px] font-extrabold text-white block uppercase leading-tight">4. Family</span>
+                        <p className="text-[6.5px] text-slate-500 leading-none mt-0.5">Decrypted Release</p>
+                      </div>
+                    </div>
+
+                    {/* Layout ratios bar graph comparing simple and complex asset parameters */}
+                    <div className="space-y-2 pt-2 border-t border-slate-900">
+                      <div className="flex justify-between items-center text-[8.5px] font-sans font-bold text-slate-400">
+                        <span>Everyday Usecases (Cards, Bank accounts, Cash, Agreements)</span>
+                        <span className="text-white">55%</span>
+                      </div>
+                      <div className="h-2 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800/80">
+                        <div className="h-full bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-full" style={{ width: '55%' }} />
+                      </div>
+
+                      <div className="flex justify-between items-center text-[8.5px] font-sans font-bold text-slate-400 pt-1">
+                        <span>Core Estate Parameters (Deeds, Wills, Trusts, Life Payouts)</span>
+                        <span className="text-white">45%</span>
+                      </div>
+                      <div className="h-2 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800/80">
+                        <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full" style={{ width: '45%' }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-4">
+                    <button 
+                      onClick={() => setStep('master_key')}
+                      className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/40 uppercase text-xs tracking-widest flex items-center justify-center gap-2 cursor-pointer border border-indigo-500/30"
+                    >
+                      <span>Proceed to Vault Genesis</span>
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button 
+                      onClick={onLogout}
+                      className="w-full py-3 bg-slate-950/40 border border-slate-800/85 text-slate-400 hover:text-white rounded-xl font-bold hover:bg-slate-900 transition-all text-xs tracking-widest uppercase cursor-pointer"
+                    >
+                      Logout & Exit Setup
+                    </button>
+                  </div>
+                </div>
+
+                {/* RIGHT HIGH-IMPACT LIVE SIMULATOR & INTERACTIVE GUIDELINES (7 cols) */}
+                <div className="lg:col-span-7 bg-slate-950/30 border border-slate-855 rounded-3xl p-6 flex flex-col justify-start relative overflow-hidden min-h-[500px]">
+                  
+                  {/* Decorative element */}
+                  <div className="absolute top-0 right-0 p-2 text-[8px] font-mono text-slate-500 font-extrabold uppercase tracking-widest select-none bg-slate-900/40 rounded-bl border-l border-b border-slate-850">
+                    Live Simulator Sandbox
+                  </div>
+
+                  {/* 1. WHY TAB VIEW */}
+                  {infoTab === 'why' && (
+                    <div className="w-full space-y-6 animate-fade-in p-1">
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-indigo-400 tracking-wider mb-1">Architecture Comparison</h4>
+                        <p className="text-[11px] text-slate-400 leading-normal mb-4">
+                          See why central hosts represent a single failure node. WhyOrVault keeps you 100% in command of your data.
+                        </p>
+                      </div>
+
+                      {/* Central Server Database block */}
+                      <div className="p-4 bg-slate-900/60 border border-red-950/40 rounded-xl relative">
+                        <div className="absolute top-3.5 right-3.5 text-[8px] font-black text-red-400 uppercase tracking-widest bg-red-950/55 border border-red-900/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                          <span className="h-1 w-1 bg-red-400 rounded-full animate-ping" />
+                          Centralized Host
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="h-10 w-10 bg-red-950/15 border border-red-900/35 rounded-lg flex items-center justify-center text-red-400 shrink-0">
+                            <Database className="h-5 w-5" />
+                          </div>
+                          <div className="text-left">
+                            <h5 className="text-[11px] font-black uppercase text-slate-200">The Central Server Risk</h5>
+                            <ul className="text-[10px] text-slate-400 mt-2 space-y-1.5 list-disc pl-3 leading-normal">
+                              <li>Keys are kept or decrypted on third-party servers.</li>
+                              <li>Subject to silent data subpoena, platform outages, and corporate capture.</li>
+                              <li>Single point of failure for hackers, personnel breaches, and state interference.</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Client Node Browser block */}
+                      <div className="p-4 bg-gradient-to-br from-indigo-950/45 to-indigo-950/10 border border-indigo-500/30 rounded-xl relative shadow-md">
+                        <div className="absolute top-3.5 right-3.5 text-[8px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-950/55 border border-emerald-955/30 px-1.5 py-0.5 rounded flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 bg-emerald-400 rounded-full animate-pulse" />
+                          Sovereign Client Node
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="h-10 w-10 bg-indigo-500/15 border border-indigo-500/35 rounded-lg flex items-center justify-center text-indigo-400 shrink-0">
+                            <Lock className="h-5 w-5" />
+                          </div>
+                          <div className="text-left">
+                            <h5 className="text-[11px] font-black uppercase text-white">WhyOrVault Architecture</h5>
+                            <p className="text-[10px] text-slate-300 mt-1 leading-relaxed">
+                              Decryption keys are generated locally. Utilizing <strong>Salt Derivations</strong>, your credentials transform your local browser state into a self-protecting vault.
+                            </p>
+                            <ul className="text-[10px] text-slate-400 mt-2 space-y-1.5 list-disc pl-3 leading-normal">
+                              <li><strong>Zero cloud presence</strong>: Data never passes servers unencrypted.</li>
+                              <li>Shamir cryptographic escrow secures secret indexes natively on device.</li>
+                              <li>Your keys stay in physical safe custody on paper or QR printouts.</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. WHAT TAB VIEW (INTERACTIVE PREVIEW PHONE MATCHING PDF DETAIL) */}
+                  {infoTab === 'what' && (
+                    <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-4 animate-fade-in items-start">
+                      
+                      {/* Left Sidebar Pillars categorized for human readability */}
+                      <div className="md:col-span-5 space-y-3 text-xs text-left">
+                        
+                        {/* THE LAYMAN USECASES CATEGORY */}
+                        <div>
+                          <span className="text-[8.5px] font-black uppercase text-indigo-400 tracking-wider block mb-1.5 border-b border-indigo-950/50 pb-0.5">💳 Simple Everyday Items</span>
+                          <div className="space-y-1">
+                            {[
+                              { id: 'simple_finance', name: '💳 Bank Nominees & card', color: 'border-indigo-500' },
+                              { id: 'cash_locker', name: '💵 Cash & Home Locker', color: 'border-amber-500' },
+                              { id: 'non_financial', name: '📝 Simple Home Guides', color: 'border-teal-500' }
+                            ].map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => setSelectedPillar(p.id)}
+                                className={cn(
+                                  "w-full text-left px-2.5 py-2 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer block",
+                                  selectedPillar === p.id 
+                                    ? `bg-slate-900 ${p.color} border-l-4 text-white shadow-sm` 
+                                    : "bg-slate-900/30 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200"
+                                )}
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* THE TRADITIONAL ESTATE CATEGORY */}
+                        <div>
+                          <span className="text-[8.5px] font-black uppercase text-emerald-400 tracking-wider block mb-1.5 border-b border-emerald-950/50 pb-0.5">🏠 Main Estate Assets</span>
+                          <div className="space-y-1">
+                            {[
+                              { id: 'will', name: '📜 Living Will & Trust', color: 'border-emerald-500' },
+                              { id: 'realestate', name: '🏠 Real Estates Deeds', color: 'border-blue-500' },
+                              { id: 'insurance', name: '🤝 Life Insurance Payout', color: 'border-pink-500' },
+                              { id: 'valuables', name: '💎 Valuables & Property', color: 'border-amber-500' }
+                            ].map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => setSelectedPillar(p.id)}
+                                className={cn(
+                                  "w-full text-left px-2.5 py-2 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer block",
+                                  selectedPillar === p.id 
+                                    ? `bg-slate-900 ${p.color} border-l-4 text-white shadow-sm` 
+                                    : "bg-slate-900/30 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200"
+                                )}
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* TRIGGERS & MESSAGES */}
+                        <div>
+                          <span className="text-[8.5px] font-black uppercase text-purple-400 tracking-wider block mb-1.5 border-b border-purple-950/50 pb-0.5">⏰ Guardian Trigger</span>
+                          <div className="space-y-1">
+                            {[
+                              { id: 'trigger', name: '⏰ check-in Trigger', color: 'border-red-500' },
+                              { id: 'legacy', name: '✉️ Sealed Legacy Letter', color: 'border-purple-500' }
+                            ].map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => setSelectedPillar(p.id)}
+                                className={cn(
+                                  "w-full text-left px-2.5 py-2 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer block",
+                                  selectedPillar === p.id 
+                                    ? `bg-slate-900 ${p.color} border-l-4 text-white shadow-sm` 
+                                    : "bg-slate-900/30 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200"
+                                )}
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                      </div>
+
+                      {/* Right Phone Simulator Frame matches PDF screen styles precisely */}
+                      <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl relative text-left min-h-[420px] flex flex-col justify-between">
+                        
+                        {/* Browser Sandbox Header */}
+                        <div className="pb-2 border-b border-slate-800 flex items-center justify-between">
+                          <div>
+                            <span className="text-[7.5px] font-mono text-indigo-400 uppercase tracking-widest block">SECURE PREVIEW SIMULATOR</span>
+                            <span className="text-[10px] font-black uppercase text-white flex items-center gap-1">
+                              WhyOrVault Interactive Sandbox
+                            </span>
+                          </div>
+                          <Lock className="h-3 w-3 text-slate-500 shrink-0" />
+                        </div>
+
+                        {/* Middle Live Mockup Content */}
+                        <div className="py-4 flex-1">
+                          
+                          {/* USE CASE 1: BANK & CREDIT CARDS */}
+                          {selectedPillar === 'simple_finance' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-indigo-900/10 border border-indigo-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-indigo-400">Category: Simple Finance</span>
+                                  <h5 className="font-extrabold text-white">Bank Accounts & Nominees</h5>
+                                </div>
+                                <span className="bg-indigo-500/15 text-indigo-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-indigo-500/20">MAPPED</span>
+                              </div>
+
+                              <div className="p-2 bg-slate-950/50 rounded-lg border border-slate-850 space-y-1.5 text-slate-300">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">Accounts & Nominees Checklist</span>
+                                <div className="flex justify-between items-center border-b border-slate-900 pb-1">
+                                  <span>🏦 HDFC Savings — Nominee Registered</span>
+                                  <span className="text-indigo-400 font-bold">100% (Ananya)</span>
+                                </div>
+                                <div className="flex justify-between items-center border-b border-slate-900 pb-1">
+                                  <span>🏦 SBI Deposits — Nominee Registered</span>
+                                  <span className="text-indigo-400 font-bold">100% (Ananya)</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span>💳 Credit Cards Outstandings & Autopays</span>
+                                  <span className="text-amber-500 font-bold">Directions Listed</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-md">
+                                <span className="text-[7.5px] font-bold text-slate-500 uppercase block">Layman Safety Rule:</span>
+                                <p className="text-[8.5px] text-slate-300 mt-0.5 font-sans leading-normal">
+                                  <strong>No PIN, password, or card digits are written here.</strong> The vault simply tells your heirs exactly where card recovery guidelines are located inside the home safe, saving weeks of bank paperwork.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* USE CASE 2: CASH & LOCKERS */}
+                          {selectedPillar === 'cash_locker' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-amber-900/10 border border-amber-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-amber-500">Category: Cash Transactions</span>
+                                  <h5 className="font-extrabold text-white">Contingency Cash & Home Locker</h5>
+                                </div>
+                                <span className="bg-amber-500/15 text-amber-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-amber-500/20">LOCATED</span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-slate-400">
+                                <div className="p-1.5 bg-slate-950/40 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Locker Location</span>
+                                  <span className="text-slate-200 font-bold font-sans">SBI Jubilee B-44 Key at Home</span>
+                                </div>
+                                <div className="p-1.5 bg-slate-950/40 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Physical Cash Buffer</span>
+                                  <span className="text-emerald-400 font-bold">₹1.5 Lakh Stashed</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg space-y-1">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-sans">Locker Combination Instructions</span>
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                  <span>Cash stored in Master Bedroom wardrobe hidden bottom partition folder.</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                  <span>Dial combination code direction details: <strong>3 turns LEFT to 42, 2 turns RIGHT to 18.</strong></span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* USE CASE 3: NON-FINANCIAL DOMESTIC MATTERS */}
+                          {selectedPillar === 'non_financial' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-teal-900/10 border border-teal-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-teal-400">Category: Non-Financial Matter</span>
+                                  <h5 className="font-extrabold text-white">Household Guides & Utility Bill Transfers</h5>
+                                </div>
+                                <span className="bg-teal-500/15 text-teal-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-teal-500/20">MAPPED</span>
+                              </div>
+
+                              <div className="space-y-1.5 text-slate-300 font-sans">
+                                <div className="p-1.5 bg-slate-950/40 border border-slate-850 rounded">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-black">⚡ Electricity & Water Connection</span>
+                                  <span className="text-slate-300 text-[9px]">TSSPDCL Meter No: 441234. Bills pay cycle is auto-debited on 18th of every month.</span>
+                                </div>
+                                <div className="p-1.5 bg-slate-950/40 border border-slate-850 rounded">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-black">🌐 Domestic Wifi Router Configuration</span>
+                                  <span className="text-slate-300 text-[9px]">ISP Router Admin panel username/password reset files index located under physical drawer checklist 14.</span>
+                                </div>
+                                <div className="p-1.5 bg-slate-950/40 border border-slate-850 rounded">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-black">🍎 Household Agreements & Pet Information</span>
+                                  <span className="text-slate-300 text-[9px]">Domestic staff registry and pet vaccines timeline records kept inside Vault Folder index/Utility.</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* WILL PILLAR */}
+                          {selectedPillar === 'will' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-emerald-900/10 border border-emerald-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-emerald-400">Category: Legal Will</span>
+                                  <h5 className="font-extrabold text-white">Last Will & testament</h5>
+                                </div>
+                                <span className="bg-emerald-500/15 text-emerald-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-emerald-500/20">Active</span>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-2 text-slate-400">
+                                <div className="p-1.5 bg-slate-950/40 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Executed On</span>
+                                  <span className="text-slate-200 font-bold">14 Jan 2025</span>
+                                </div>
+                                <div className="p-1.5 bg-slate-950/40 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Notarized</span>
+                                  <span className="text-emerald-400 font-bold">Yes</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950/40 rounded-lg border border-slate-850 space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[7.5px] font-bold text-slate-500 uppercase">Physical custody:</span>
+                                  <span className="text-indigo-400 font-mono">Master Bedroom Fire Safe Locker</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[7.5px] font-bold text-slate-500 uppercase">Trust Details:</span>
+                                  <span className="text-slate-300">Family Revocable Living Trust</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[7.5px] font-bold text-slate-500 uppercase">Trustee:</span>
+                                  <span className="text-slate-300">Ananya Sharma ( Spouse )</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950 border border-slate-850 rounded-lg flex items-start gap-2">
+                                <AlertCircle className="h-3.5 w-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                                <p className="text-[8.5px] text-slate-300 leading-snug font-sans">
+                                  <strong>Original Copy Reminder:</strong> Legal signed physical outputs should be kept in home locker safe or with your registry attorney.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* REAL ESTATE PILLAR */}
+                          {selectedPillar === 'realestate' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-blue-900/10 border border-blue-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-blue-400">Real Estate Assets</span>
+                                  <h5 className="font-extrabold text-white">Jubilee Hills Residence</h5>
+                                </div>
+                                <span className="bg-blue-500/15 text-blue-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-blue-500/20">Owned</span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-slate-400">
+                                <div className="p-1.5 bg-slate-950/40 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Deed Reference</span>
+                                  <span className="text-slate-200 font-mono">TS/HYD/2019/04421</span>
+                                </div>
+                                <div className="p-1.5 bg-slate-950/40 rounded border border-slate-850">
+                                  <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Registered Value</span>
+                                  <span className="text-slate-200 font-bold">₹1.4 Cr INR</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950/60 border border-slate-855 rounded-lg space-y-1">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-sans">Deed Document Store Checklist</span>
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="h-3 w-3 text-emerald-400 shrink-0" />
+                                  <span>Sale Deed (Registrar Jubilee office)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="h-3 w-3 text-emerald-400 shrink-0" />
+                                  <span>Encumbrance Certificate (EC - FY 24 clear)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-slate-300">
+                                  <Check className="h-3 w-3 text-emerald-400 shrink-0" />
+                                  <span>GHMC Revenue Khata Certificate</span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between p-1.5 bg-slate-950 border border-slate-850 rounded-lg">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-5 w-5 rounded-full bg-slate-850 flex items-center justify-center font-bold text-slate-200 text-[8px] shrink-0">RM</div>
+                                  <div className="text-left">
+                                    <span className="font-bold text-slate-300 block leading-none">Ravi Mohan</span>
+                                    <span className="text-[7.5px] text-slate-500 leading-none">Property Manager • +91 98490 11234</span>
+                                  </div>
+                                </div>
+                                <span className="text-[7.5px] border border-slate-850 px-1.5 py-0.5 rounded text-slate-500 shrink-0">Contact Added</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* INSURANCE PILLAR */}
+                          {selectedPillar === 'insurance' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-pink-900/10 border border-pink-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-pink-400">Estate Handoff</span>
+                                  <h5 className="font-extrabold text-white">LIC Jeevan Amar Policy</h5>
+                                </div>
+                                <span className="bg-pink-500/15 text-pink-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-pink-500/20">₹1.0 Crore</span>
+                              </div>
+
+                              <div className="p-2 bg-slate-950/50 rounded-lg border border-slate-850 text-slate-300 space-y-1.5">
+                                <span className="text-[8px] font-black uppercase tracking-wider text-slate-400 font-sans">Asset Beneficiary Splits</span>
+                                <div className="flex justify-between items-center border-b border-slate-850 pb-1">
+                                  <span>Ananya Sharma ( Spouse )</span>
+                                  <span className="text-pink-400 font-bold">60% Payout</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span>Rohan Sharma ( Son )</span>
+                                  <span className="text-pink-400 font-bold">44% Payout</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950 border border-slate-850 rounded-lg flex items-center gap-2">
+                                <div className="h-6 w-6 bg-pink-500/10 rounded border border-pink-500/20 flex items-center justify-center text-pink-400 shrink-0">
+                                  <RefreshCw className="h-3 w-3 animate-spin duration-[6000ms]" />
+                                </div>
+                                <div>
+                                  <span className="text-[7.5px] block text-slate-500 uppercase font-black">Lic claims Hotline</span>
+                                  <span className="text-slate-300 font-bold">1800-33-4433 ( Toll-free )</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* VALUABLES & PERSONAL PILLARS */}
+                          {selectedPillar === 'valuables' && (
+                            <div className="space-y-2.5 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-amber-900/10 border border-amber-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-amber-500">Valuables & IP Assets</span>
+                                  <h5 className="font-extrabold text-white">Locker Contents, CapTables & Patents</h5>
+                                </div>
+                                <span className="bg-amber-500/15 text-amber-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-amber-500/20">Listed</span>
+                              </div>
+
+                              <div className="space-y-1.5 text-slate-300 font-sans">
+                                <div className="flex justify-between items-center bg-slate-950/40 p-1.5 border border-slate-850 rounded">
+                                  <span>💎 Diamond Necklace (2.4 ct appraised)</span>
+                                  <span className="text-slate-400">SBI Locker B-44</span>
+                                </div>
+                                <div className="flex justify-between items-center bg-slate-950/40 p-1.5 border border-slate-850 rounded">
+                                  <span>🚗 Toyota Innova Crysta (RC Transfer Copy)</span>
+                                  <span className="text-slate-400">TS 09 EA 4421</span>
+                                </div>
+                                <div className="flex justify-between items-center bg-slate-950/40 p-1.5 border border-slate-850 rounded">
+                                  <span>📜 Patent Filings (TS/IN/2022/041234)</span>
+                                  <span className="text-slate-300 font-semibold bg-indigo-950 px-1 py-0.2 rounded text-[7.5px]">Pending</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2 bg-slate-950 border border-slate-850 rounded-lg">
+                                <span className="text-[7.5px] text-slate-500 block uppercase font-bold">Locker combination access path</span>
+                                <span className="text-slate-300">Bedroom Safe locker locker key is placed in vault secure attachments path index 4.</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* TRIGGER TIMER PILLAR */}
+                          {selectedPillar === 'trigger' && (
+                            <div className="space-y-2.5 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-rose-900/10 border border-rose-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-red-400">Emergency trigger logic</span>
+                                  <h5 className="font-extrabold text-white">Check-In Activity Schedule</h5>
+                                </div>
+                                <span className="bg-red-500/15 text-red-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-red-500/20 animate-pulse">active</span>
+                              </div>
+
+                              <div className="bg-slate-950/40 border border-slate-850 rounded-xl p-3 space-y-2">
+                                <div className="flex justify-between items-center text-[8.5px] font-bold text-slate-300 font-sans">
+                                  <span>Next Cryptographic Check-in Due</span>
+                                  <span className="text-emerald-400">In 12 Days</span>
+                                </div>
+                                <div className="h-1.5 bg-slate-950 border border-slate-850 rounded-full overflow-hidden">
+                                  <div className="h-full bg-indigo-505 w-[60%] animate-pulse" style={{ backgroundColor: '#6366f1' }} />
+                                </div>
+                                <div className="text-[8px] text-slate-500">18 of 30-day interval elapsed. Log in to reset safely.</div>
+                              </div>
+
+                              {/* Handoff Steps */}
+                              <div className="space-y-1 pl-1 border-l-2 border-indigo-500/45 ml-1">
+                                <div className="text-[8px] text-slate-300 leading-snug">
+                                  <strong>1. Expired Notification:</strong> Handoff sequence initiates automatically.
+                                </div>
+                                <div className="text-[8px] text-slate-300 leading-snug">
+                                  <strong>2. 48-Hour grace:</strong> Alert emails allow emergency override check-in reset.
+                                </div>
+                                <div className="text-[8px] text-slate-400 leading-snug">
+                                  <strong>3. Secret Release:</strong> Tier 1 heirs unlock with safe PIN.
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* FAMILY LEGACY LETTER PILLAR */}
+                          {selectedPillar === 'legacy' && (
+                            <div className="space-y-3 animate-fade-in text-[10px]">
+                              <div className="flex justify-between items-center bg-purple-900/10 border border-purple-900/30 p-2 rounded-lg">
+                                <div>
+                                  <span className="text-[7.5px] font-bold uppercase tracking-wider text-purple-400">Personal & Family Letters</span>
+                                  <h5 className="font-extrabold text-white">Legacy Wishes & Emotional Tokens</h5>
+                                </div>
+                                <span className="bg-purple-550/15 text-purple-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-purple-500/20">Sealed</span>
+                              </div>
+
+                              <p className="text-[10px] leading-relaxed italic bg-slate-950/40 p-3 rounded-lg text-slate-300 border border-slate-850 font-serif">
+                                &ldquo;If you are reading this, please know that everything I have built has been for you. This vault contains everything you need — take your time, follow the instructions...&rdquo;
+                              </p>
+
+                              <p className="text-[8.5px] text-slate-405 pl-1 leading-normal">
+                                🎁 <strong>Locker Gift Wishes:</strong> Grandfather&apos;s watch to Rohan (bedroom drawer on right). Book collection to Priya (remainder goes to school libraries).
+                              </p>
+                            </div>
+                          )}
+
+                        </div>
+
+                        {/* Bottom Simulation footer */}
+                        <div className="pt-2 border-t border-slate-800 text-center text-[8px] text-slate-500 font-mono">
+                          ESTATE INTEGRATION GRAPHICS • 100% PRIVATE NODE
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. HOW TAB VIEW */}
+                  {infoTab === 'how' && (
+                    <div className="w-full text-left space-y-6 animate-fade-in p-1">
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-emerald-400 tracking-wider mb-1">10-Minute Simple Setup Checklist</h4>
+                        <p className="text-[11px] text-slate-400 leading-normal mb-4">
+                          Setting up secure digital inheritance has never been simpler. Follow the checklist step-by-step:
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl relative hover:border-slate-700 transition-colors">
+                          <div className="h-6 w-6 bg-indigo-500/10 rounded-full flex items-center justify-center text-indigo-400 text-[10px] font-black mb-2 animate-pulse">1</div>
+                          <h5 className="text-[11px] font-black uppercase text-white">Generate Secure Key</h5>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                            Generate standard 12-64 character keys or type your own. It acts as the local PBKDF2 cryptography vector salt lock.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl relative hover:border-slate-700 transition-colors">
+                          <div className="h-6 w-6 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-400 text-[10px] font-black mb-2 animate-pulse">2</div>
+                          <h5 className="text-[11px] font-black uppercase text-white">Physical Transcription</h5>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                            Write your keys down on paper or print the QR index card. Never keep screenshots on connected, unencrypted mobile photo albums!
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl relative hover:border-slate-700 transition-colors">
+                          <div className="h-6 w-6 bg-pink-500/10 rounded-full flex items-center justify-center text-pink-400 text-[10px] font-black mb-2 animate-pulse">3</div>
+                          <h5 className="text-[11px] font-black uppercase text-white">Verification Drill</h5>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                            Prove you wrote down the sequence correctly by re-entering characters in a secure interactive simulator drill to activate database mounts.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl relative hover:border-slate-700 transition-colors">
+                          <div className="h-6 w-6 bg-amber-500/10 rounded-full flex items-center justify-center text-amber-400 text-[10px] font-black mb-2 animate-pulse">4</div>
+                          <h5 className="text-[11px] font-black uppercase text-white">Add Assets & Timer</h5>
+                          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                            Log properties, bank nominations, or simple utilities transfers, and select an active check-in window threshold (typically 30 days interval).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 4. FAQ TAB VIEW */}
+                  {infoTab === 'faq' && (
+                    <div className="w-full text-left space-y-6 animate-fade-in p-1">
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-amber-500 tracking-wider mb-1">Frequently Asked Security Questions</h4>
+                        <p className="text-[11px] text-slate-400 leading-normal mb-4">
+                          Review standard protocols to understand how emergency releases and non-repudiation features are coordinated.
+                        </p>
+                      </div>
+
+                      <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                        {[
+                          {
+                            q: "What if I completely lose my master key?",
+                            a: "Because this is a strict Zero-Knowledge system under complete sovereign control, recovery by staff is impossible. Always write down your key on physical paper and store it in two separate safe locations (e.g. Master bedroom safe + safe deposit bank boxes)."
+                          },
+                          {
+                            q: "Can my heirs spy on my estate details while I am active?",
+                            a: "Absolutely not. The designated emergency security PIN only authorizes access after your 30-day countdown timer expires and the 48-hour final grace window concludes. While you check-in periodically, the secret stays private."
+                          },
+                          {
+                            q: "Is any unencrypted document cached in standard clouds?",
+                            a: "No. Your documents and reference keys stay on your client browser's local sandbox IndexDB node. Encrypted data indexes only leave your local machine with AES-256-GCM configurations."
+                          },
+                          {
+                            q: "What happens if I travel to areas with zero web coverage?",
+                            a: "You can increase your default 30-day check-in interval to 90 days, 180 days, or turn check-in logic temporarily off in your settings panel before leaving coverage areas."
+                          },
+                          {
+                            q: "How does the optional Panic Key work dynamically?",
+                            a: "If defined, typing this optional code triggers an instant to silent destruction override that deletes data from local cached sandboxes immediately."
+                          }
+                        ].map((item, idx) => (
+                          <div key={idx} className="p-3 bg-slate-900/60 border border-slate-850 rounded-xl space-y-1">
+                            <h5 className="text-[11px] font-black text-white flex items-center gap-1.5 font-sans">
+                              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                              {item.q}
+                            </h5>
+                            <p className="text-[10px] text-slate-400 leading-relaxed font-sans pl-3">
+                              {item.a}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+
               </div>
-              <div className="space-y-3">
-                <button 
-                  onClick={() => setStep('master_key')}
-                  className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/40 uppercase text-xs tracking-widest"
-                >
-                  Initiate Key Generation
-                </button>
-                <button 
-                  onClick={onLogout}
-                  className="w-full py-3 bg-slate-950/40 border border-slate-800/85 text-slate-400 hover:text-white rounded-xl font-bold hover:bg-slate-900 transition-all text-xs tracking-widest uppercase"
-                >
-                  Logout
-                </button>
-              </div>
+
             </div>
           )}
 
@@ -6389,6 +7302,7 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
   const [copied, setCopied] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [justification, setJustification] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
   
   const isOwner = userId === vaultId;
 
@@ -6421,6 +7335,11 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
   const handleDelete = async () => {
     if (!justification.trim()) {
       window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "A justification is required for the audit trail.", type: 'error' } }));
+      return;
+    }
+
+    if (deleteConfirmText !== 'DELETE') {
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Accidental deletion guard: Please type 'DELETE' exactly.", type: 'error' } }));
       return;
     }
     
@@ -6482,7 +7401,16 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
            {isOwner && (
              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                <button onClick={onEdit} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><Edit3 className="h-3.5 w-3.5" /></button>
-               <button onClick={() => setIsDeleting(true)} className="p-1.5 hover:bg-rose-950/30 rounded-lg text-rose-400 hover:text-rose-300 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+               <button 
+                 onClick={() => {
+                   setDeleteConfirmText('');
+                   setJustification('');
+                   setIsDeleting(true);
+                 }} 
+                 className="p-1.5 hover:bg-rose-950/30 rounded-lg text-rose-400 hover:text-rose-300 transition-colors"
+               >
+                 <Trash2 className="h-3.5 w-3.5" />
+               </button>
              </div>
            )}
         </div>
@@ -7004,27 +7932,53 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-10 bg-slate-950/95 backdrop-blur-md p-6 flex flex-col justify-center rounded-apex-lg border border-slate-800"
           >
-             <h5 className="text-sm font-bold text-white mb-2">Audit: Deletion Justification</h5>
-             <p className="text-[10px] text-slate-400 mb-4 font-sans leading-relaxed">This record will be moved to the encrypted archive. Explain why this action is being taken for the security trail.</p>
+             <h5 className="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
+               <AlertOctagon className="h-4 w-4 text-red-500 animate-pulse" />
+               Audit & Safe Delete
+             </h5>
+             <p className="text-[10px] text-slate-400 mb-3 font-sans leading-relaxed">
+               This record will be permanently deleted from active vault and archived. Explain why this action is being taken for the immutable audit trail.
+             </p>
+             
              <textarea 
                autoFocus
                value={justification}
                onChange={(e) => setJustification(e.target.value)}
-               className="w-full h-20 bg-slate-900 border border-slate-800 text-white rounded-lg p-3 text-xs mb-4 focus:border-red-500 outline-none font-sans"
+               className="w-full h-14 bg-slate-900 border border-slate-800 text-white rounded-lg p-2.5 text-xs mb-3 focus:border-red-500 outline-none font-sans"
                placeholder="Reason for deletion (e.g. Account closed, Merged...)"
              />
+
+             {/* Protective Accidental Deletion Confirmation input */}
+             <div className="space-y-1 mb-4 text-left">
+               <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
+                 <span className="text-slate-400">Security Gate:</span>
+                 <span className="text-red-400 animate-pulse">Type 'DELETE' to unlock</span>
+               </div>
+               <input 
+                 type="text"
+                 value={deleteConfirmText}
+                 onChange={(e) => setDeleteConfirmText(e.target.value)}
+                 className="w-full bg-slate-900 border border-slate-800 text-red-500 placeholder:text-slate-700 font-mono text-center rounded-lg py-1.5 px-3 text-xs focus:border-red-500 outline-none uppercase"
+                 placeholder="TYPE DELETE HERE"
+               />
+             </div>
+
              <div className="flex gap-2">
                <button 
-                 onClick={() => setIsDeleting(false)}
+                 onClick={() => {
+                   setIsDeleting(false);
+                   setDeleteConfirmText('');
+                 }}
                  className="flex-1 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors"
                >
                  Cancel
                </button>
                <button 
+                 disabled={deleteConfirmText !== 'DELETE' || !justification.trim()}
                  onClick={handleDelete}
-                 className="flex-1 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-500 transition-all shadow-lg shadow-red-900/40"
+                 className="flex-1 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-500 transition-all shadow-lg shadow-red-900/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:grayscale"
                >
-                 Confirm Archival
+                 Safe Delete
                </button>
              </div>
           </motion.div>
