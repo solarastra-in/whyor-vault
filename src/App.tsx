@@ -1377,43 +1377,59 @@ export default function App() {
               </motion.div>
             )}
 
-            {screen === 'vault' && activeKey && vaultId && vaultConfig && (
-              <motion.div
-                key="vault-screen-wrapper"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.4 }}
-                className="w-full"
-              >
-                <VaultMain 
-                  key="vault-main"
-                  entries={decryptedEntries}
-                  encryptionKey={activeKey}
-                  combinedSignature={activeSignature}
-                  userId={user.uid}
-                  userEmail={user.email || 'anonymous@why-or-vault.com'}
-                  vaultId={vaultId}
-                  onLock={logout}
-                  config={vaultConfig}
-                  onShowGuide={() => setIsHowItWorksOpen(true)}
-                  idleTimeoutMins={idleTimeoutMins}
-                  setIdleTimeoutMins={setIdleTimeoutMins}
-                  remainingSecs={remainingSecs}
-                  onExtendSession={() => {
-                    setLastActivity(Date.now());
-                    setExtendCount(prev => prev + 1);
-                  }}
-                  extendCount={extendCount}
-                  recoveredAnswers={recoveredAnswers}
-                  setRecoveredAnswers={setRecoveredAnswers}
-                  showAnswersBanner={showAnswersBanner}
-                  setShowAnswersBanner={setShowAnswersBanner}
-                  theme={theme}
-                  onToggleTheme={toggleTheme}
-                />
-              </motion.div>
-            )}
+            {screen === 'vault' && activeKey && vaultId && vaultConfig && (() => {
+              // Calculate progressive grayscale when session is close to timeout (final 60s)
+              const isTimeoutDangerZone = remainingSecs !== null && remainingSecs <= 60 && remainingSecs > 0;
+              const timeoutRatio = isTimeoutDangerZone ? (60 - remainingSecs) / 60 : 0;
+              const grayscalePercentage = Math.min(100, Math.floor(timeoutRatio * 100));
+              const blurAmount = (timeoutRatio * 1.5).toFixed(2);
+              const opacityAmount = (1.0 - (timeoutRatio * 0.15)).toFixed(2);
+
+              const dynamicStyle = {
+                filter: isTimeoutDangerZone ? `grayscale(${grayscalePercentage}%) blur(${blurAmount}px)` : 'none',
+                opacity: isTimeoutDangerZone ? parseFloat(opacityAmount) : 1,
+                transition: 'filter 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+              };
+
+              return (
+                <motion.div
+                  key="vault-screen-wrapper"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.4 }}
+                  className="w-full"
+                  style={dynamicStyle}
+                >
+                  <VaultMain 
+                    key="vault-main"
+                    entries={decryptedEntries}
+                    encryptionKey={activeKey}
+                    combinedSignature={activeSignature}
+                    userId={user.uid}
+                    userEmail={user.email || 'anonymous@why-or-vault.com'}
+                    vaultId={vaultId}
+                    onLock={logout}
+                    config={vaultConfig}
+                    onShowGuide={() => setIsHowItWorksOpen(true)}
+                    idleTimeoutMins={idleTimeoutMins}
+                    setIdleTimeoutMins={setIdleTimeoutMins}
+                    remainingSecs={remainingSecs}
+                    onExtendSession={() => {
+                      setLastActivity(Date.now());
+                      setExtendCount(prev => prev + 1);
+                    }}
+                    extendCount={extendCount}
+                    recoveredAnswers={recoveredAnswers}
+                    setRecoveredAnswers={setRecoveredAnswers}
+                    showAnswersBanner={showAnswersBanner}
+                    setShowAnswersBanner={setShowAnswersBanner}
+                    theme={theme}
+                    onToggleTheme={toggleTheme}
+                  />
+                </motion.div>
+              );
+            })()}
           </AnimatePresence>
         )}
       </AnimatePresence>
@@ -2310,7 +2326,7 @@ SAFEKEEPING PROTOCOL:
       onComplete();
     } catch (e) {
       console.error(e);
-      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Vault Genesis Failed.", type: 'error' } }));
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Vault Genesis Failed. Please check network connection stability and try submitting again.", type: 'error' } }));
     } finally {
       setLoading(false);
     }
@@ -6656,7 +6672,7 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
       onClose();
     } catch (err) {
       console.error(err);
-      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Import failed. Verify template format.", type: 'error' } }));
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Import failed. Verify the workbook format: it must match the template structure precisely and reside in sheet #1.", type: 'error' } }));
     } finally {
       setLoading(false);
     }
@@ -6723,7 +6739,7 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
       onClose();
     } catch (err) {
       console.error(err);
-      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Secure generation failed.", type: 'error' } }));
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Secure export document build failed. Unlock cryptographic state or reload the app if the error persists.", type: 'error' } }));
     } finally {
       setLoading(false);
     }
@@ -7301,6 +7317,7 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPendingDelete, setIsPendingDelete] = useState(false);
   const [justification, setJustification] = useState('');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   
@@ -7343,6 +7360,7 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
       return;
     }
     
+    setIsPendingDelete(true);
     try {
       // 1. Archive the item
       const archiveCollection = collection(db, 'vaults', vaultId, 'archived_items');
@@ -7369,7 +7387,9 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
       setIsDeleting(false);
     } catch (e) {
       console.error(e);
-      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Failed to archive/delete entry.", type: 'error' } }));
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Failed to archive/delete entry. This could be due to Firestore permissions or unstable internet connection. Please verify active vault write access.", type: 'error' } }));
+    } finally {
+      setIsPendingDelete(false);
     }
   };
 
@@ -7974,11 +7994,18 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
                  Cancel
                </button>
                <button 
-                 disabled={deleteConfirmText !== 'DELETE' || !justification.trim()}
+                 disabled={deleteConfirmText !== 'DELETE' || !justification.trim() || isPendingDelete}
                  onClick={handleDelete}
-                 className="flex-1 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-500 transition-all shadow-lg shadow-red-900/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:grayscale"
+                 className="flex-1 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-500 transition-all shadow-lg shadow-red-900/40 disabled:opacity-35 disabled:cursor-not-allowed disabled:grayscale flex items-center justify-center gap-1.5"
                >
-                 Safe Delete
+                 {isPendingDelete ? (
+                   <>
+                     <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+                     Deleting...
+                   </>
+                 ) : (
+                   "Safe Delete"
+                 )}
                </button>
              </div>
           </motion.div>
@@ -7995,9 +8022,14 @@ function Field({ label, value, show, masked, onCopy, icon }: { label: string, va
   return (
     <div className="group/field">
       <p className="text-[9px] font-bold text-ink-muted uppercase tracking-wider mb-1">{label}</p>
-      <div className="flex items-center justify-between font-mono text-[11px] font-medium text-ink bg-surface-soft/50 py-1 px-2 rounded-apex group-hover/field:bg-surface-soft transition-all">
+      <div className="flex items-center justify-between font-mono text-[11px] font-medium text-ink bg-surface-soft/50 py-1.5 px-2.5 rounded-apex group-hover/field:bg-surface-soft transition-all">
         <span className="truncate pr-2">{displayValue}</span>
-        <button onClick={onCopy} className="opacity-0 group-hover/field:opacity-40 hover:!opacity-100 transition-all">
+        <button 
+          onClick={onCopy} 
+          className="opacity-40 group-hover/field:opacity-85 hover:!opacity-100 focus:opacity-100 focus-visible:opacity-100 transition-all p-1 hover:bg-slate-800/40 rounded shrink-0"
+          title={`Copy ${label}`}
+          aria-label={`Copy value for ${label}`}
+        >
           <Copy className="h-3 w-3" />
         </button>
       </div>
@@ -8412,7 +8444,11 @@ function EntryModal({
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleAttachmentDelete(attach.contentHash)}
+                          onClick={() => {
+                            if (window.confirm(`Are you sure you want to permanently delete attachment "${attach.fileName}"?`)) {
+                              handleAttachmentDelete(attach.contentHash);
+                            }
+                          }}
                           className="h-7 w-7 bg-red-950/20 hover:bg-red-950/40 border border-red-500/20 rounded-apex flex items-center justify-center text-red-400 hover:text-red-300 transition-all"
                         >
                           <Trash2 className="h-3 w-3" />
@@ -8766,8 +8802,14 @@ function ShareModal({ vaultId, userId, onClose }: { vaultId: string, userId: str
                       </button>
                     )}
                     <button 
-                      onClick={() => removeMember(m)}
-                      className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to revoke access for member "${m}"?`)) {
+                          removeMember(m);
+                        }
+                      }}
+                      className="text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1"
+                      title={`Revoke access for ${m}`}
+                      aria-label={`Revoke access for ${m}`}
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
