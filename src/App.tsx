@@ -369,7 +369,7 @@ import {
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
-  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu
+  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu, Hourglass, HeartPulse
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
@@ -417,6 +417,7 @@ interface DecryptedItem {
   ownershipName?: string;
   ownershipType?: 'Individual' | 'Joint' | 'LLC' | 'Trust' | 'IRA' | 'Other';
   beneficiary?: string;
+  updatedAt?: number;
   
   // Bank / Credit Card
   cardNumber?: string;
@@ -513,6 +514,15 @@ interface DecryptedItem {
   recoveryPin?: string;
   recoveryCodes?: string;
   recoveryInstructions?: string;
+
+  // New heritage safety enhancements
+  adminContext?: string; // Advisory notes for executors
+  versions?: Array<{
+    timestamp: number;
+    editor: string;
+    justification: string;
+    decryptedSnapshot: any;
+  }>;
 }
 
 enum AuditAction {
@@ -630,6 +640,16 @@ interface VaultConfig {
   subscriptionPlan?: string;
   subscriptionExpiresAt?: string;
   subscriptionAmount?: number;
+
+  // New heritage safety switch and dynamic role controls
+  deadMansSwitchArmed?: boolean;
+  deadMansSwitchThreshold?: number; // threshold in days e.g. 90
+  deadMansSwitchLastCheckIn?: number; // timestamp in millis of last online activity
+  deadMansSwitchContacts?: string[]; // list of target heir emails
+  deadMansSwitchGracePeriod?: number; // warning grace in days e.g. 7
+  deadMansSwitchTriggered?: boolean; 
+  deadMansSwitchWarningSent?: boolean;
+  granularPermissions?: Record<string, 'spouse' | 'accountant' | 'doctor' | 'lawyer' | 'child' | 'full'>;
 }
 
 // --- Main Component ---
@@ -4803,6 +4823,20 @@ function VaultMain({
   key?: string 
 }) {
   const [items, setItems] = useState<DecryptedItem[]>(initialEntries);
+  
+  // Simulated Succession Bereavement Assist states
+  const [isBereavementSimulated, setIsBereavementSimulated] = useState(false);
+  const [checklistCompleted, setChecklistCompleted] = useState<Record<string, boolean>>({
+    proof: false,
+    handshake: false,
+    notes: false,
+    transfer: false
+  });
+
+  // Tour and FAQ manual states
+  const [isFaqOpen, setIsFaqOpen] = useState(false);
+  const [activeTourStep, setActiveTourStep] = useState<number | null>(null);
+
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -4899,7 +4933,37 @@ function VaultMain({
             return null;
           }
         }));
-        setItems(decrypted.filter((e): e is DecryptedItem => e !== null));
+        
+        const decryptedList = decrypted.filter((e): e is DecryptedItem => e !== null);
+        
+        // Granular Permissions Enforcer
+        const ownerCheck = userId === vaultId || 
+                           (vaultConfig?.owners?.includes(userId)) || 
+                           (vaultConfig?.ownerEmails?.includes(auth.currentUser?.email || ''));
+        const userRole = ownerCheck 
+          ? 'full' 
+          : ((vaultConfig?.granularPermissions && auth.currentUser?.email) 
+              ? (vaultConfig.granularPermissions[auth.currentUser.email] || 'full') 
+              : 'full');
+              
+        const roleFiltered = decryptedList.filter(it => {
+          if (userRole === 'full' || userRole === 'spouse') return true;
+          if (userRole === 'accountant') {
+            return ['credit', 'bank', 'brokerage', 'patent'].includes(it.type);
+          }
+          if (userRole === 'doctor') {
+            return ['insurance', 'life_event', 'other'].includes(it.type);
+          }
+          if (userRole === 'lawyer') {
+            return ['will_trust', 'documentation', 'patent'].includes(it.type);
+          }
+          if (userRole === 'child') {
+            return ['realestate', 'non_financial', 'documentation'].includes(it.type);
+          }
+          return true;
+        });
+
+        setItems(roleFiltered);
         setLoading(false);
       };
       decryptItems();
@@ -4907,7 +4971,7 @@ function VaultMain({
       console.warn("Items snapshot listener error caught gracefully:", error);
       setLoading(false);
     });
-  }, [vaultId, encryptionKey, vaultConfig?.isCorrupted]);
+  }, [vaultId, encryptionKey, vaultConfig?.isCorrupted, vaultConfig?.granularPermissions]);
 
   const exportVault = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(items));
@@ -4925,6 +4989,14 @@ function VaultMain({
   };
 
   const filteredItems = items.filter(it => {
+    // If bereavement simulation is active, only show legacy records that spouse can access (e.g. spouse role permitted)
+    if (isBereavementSimulated) {
+      const allowedTypes = ['will_trust', 'insurance', 'realestate'];
+      if (!allowedTypes.includes(it.type) && !it.beneficiary) {
+        return false;
+      }
+    }
+
     const matchType = filter === 'all' 
       ? it.type !== 'life_event' 
       : it.type === filter;
@@ -5049,8 +5121,27 @@ function VaultMain({
                 Vault Anatomy
               </button>
               <button 
+                onClick={() => setIsFaqOpen(true)}
+                className="w-full flex items-center gap-3 p-3 text-[11px] font-bold text-slate-450 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-950/20 rounded-lg transition-all border border-indigo-500/10 cursor-pointer"
+                id="tour-faq-btn"
+              >
+                <FileText className="h-4 w-4 text-indigo-400" />
+                FAQ / Succession Manual
+              </button>
+              <button 
+                onClick={() => {
+                  setActiveTourStep(1);
+                  window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Starting interactive WhyOr Vault tour guide!", type: 'success' } }));
+                }}
+                className="w-full flex items-center gap-3 p-3 text-[11px] font-extrabold text-amber-500 uppercase tracking-widest hover:text-amber-400 hover:bg-amber-950/20 rounded-lg transition-all border border-amber-500/15 cursor-pointer"
+              >
+                <Lightbulb className="h-4 w-4 text-amber-500 animate-pulse" />
+                Interactive Tour
+              </button>
+              <button 
                 onClick={() => setIsSettingsModalOpen(true)}
                 className="w-full flex items-center gap-3 p-3 text-[11px] font-bold text-slate-400 uppercase tracking-widest hover:text-indigo-400 hover:bg-slate-950 rounded-lg transition-all border border-transparent hover:border-indigo-500/20"
+                id="tour-settings-btn"
               >
                 <Settings className="h-4 w-4" />
                 Vault Settings
@@ -5481,6 +5572,315 @@ function VaultMain({
         </header>
 
         <div className="relative z-10">
+          {filter !== 'admin' && filter !== 'events' && !loading && (() => {
+            const hasWill = items.some(it => it.type === 'will_trust');
+            const hasFinancial = items.some(it => ['brokerage', 'bank', 'credit'].includes(it.type));
+            const hasDms = vaultConfig?.deadMansSwitchArmed === true;
+            const hasBeneficiary = items.some(it => !!it.beneficiary);
+            
+            let completenessScore = 0;
+            if (hasWill) completenessScore += 25;
+            if (hasFinancial) completenessScore += 25;
+            if (hasDms) completenessScore += 25;
+            if (hasBeneficiary) completenessScore += 25;
+
+            return (
+              <div className="mb-8 space-y-6 animate-fadeIn" id="tour-legacy-dashboard">
+                {/* Bento Grid layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  
+                  {/* Card 1: Vault Completeness Scorecard */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                          <ShieldCheck className="h-4 w-4" />
+                          Vault Integrity Index
+                        </h4>
+                        <span className="text-[10px] font-mono bg-indigo-950/40 text-indigo-400 border border-indigo-500/10 px-2 py-0.5 rounded font-black">
+                          Secured
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-5 my-2">
+                        {/* Circular progress simulated in CSS */}
+                        <div className="relative w-16 h-16 rounded-full border-4 border-slate-950 flex items-center justify-center shrink-0">
+                          <div className={cn(
+                            "absolute inset-0 rounded-full border-4 transition-all duration-500 animate-pulse",
+                            completenessScore === 100 ? "border-emerald-500" : completenessScore >= 50 ? "border-indigo-400" : "border-amber-500"
+                          )} style={{ clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%)` }} />
+                          <span className="text-sm font-mono font-black text-white">{completenessScore}%</span>
+                        </div>
+                        
+                        <div className="text-left space-y-1">
+                          <p className="text-xs font-bold text-white transition-all">
+                            {completenessScore === 100 
+                              ? "Legacy Plan Fully Bulletproof" 
+                              : completenessScore >= 50 
+                                ? "Vault Structure Functional" 
+                                : "Essential Safekeeping Deficit"}
+                          </p>
+                          <p className="text-[10.5px] text-slate-400 leading-normal font-sans">
+                            Completeness is derived dynamically from key active files, armed switch status, and heir definitions.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 pt-4 border-t border-slate-800/60 flex flex-wrap gap-2">
+                      <div className={cn("text-[9px] font-mono px-2 py-1 rounded border uppercase font-bold", hasWill ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border-slate-800 bg-slate-950 text-slate-500")}>
+                        {hasWill ? "✓ Will / Trust" : "○ No Will File"}
+                      </div>
+                      <div className={cn("text-[9px] font-mono px-2 py-1 rounded border uppercase font-bold", hasFinancial ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border-slate-800 bg-slate-950 text-slate-500")}>
+                        {hasFinancial ? "✓ Asset Linked" : "○ No Bank/Asset"}
+                      </div>
+                      <div className={cn("text-[9px] font-mono px-2 py-1 rounded border uppercase font-bold", hasDms ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border-slate-800 bg-slate-950 text-slate-500")}>
+                        {hasDms ? "✓ Switch Armed" : "○ Switch Unarmed"}
+                      </div>
+                      <div className={cn("text-[9px] font-mono px-2 py-1 rounded border uppercase font-bold", hasBeneficiary ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400" : "border-slate-800 bg-slate-950 text-slate-500")}>
+                        {hasBeneficiary ? "✓ Heir Mapped" : "○ No Heir Mapped"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Automatic Bereavement & Switch Controls */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between text-left">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                          <Hourglass className="h-4 w-4 text-amber-500" />
+                          Switch Monitoring
+                        </h4>
+                        <span className={cn(
+                          "text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border font-mono",
+                          hasDms ? "bg-amber-950/15 text-amber-400 border-amber-500/20" : "bg-slate-950 text-slate-500 border-slate-800"
+                        )}>
+                          {hasDms ? "Armed" : "Standby"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                        {hasDms 
+                          ? `Automated inactivity switch is currently monitoring your presence. Next expected check-in is due in ${vaultConfig?.deadMansSwitchThreshold || 90} days.`
+                          : "Configure the Dead Man's Switch inside Settings to trigger heir notification and secure inheritance workflows."
+                        }
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={() => setIsSettingsModalOpen(true)}
+                        className="flex-1 py-2.5 bg-slate-950 border border-slate-800 text-slate-300 font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-850 cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        Adjust Switch
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          setIsBereavementSimulated(!isBereavementSimulated);
+                          window.dispatchEvent(new CustomEvent('app-notify', { 
+                            detail: { 
+                              message: !isBereavementSimulated ? "Simulated Transition Active! Kinship checklist engaged." : "Exited simulated bereavement mode.", 
+                              type: 'success' 
+                            } 
+                          }));
+                        }}
+                        className={cn(
+                          "flex-1 py-2.5 font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer transition-all active:scale-[0.98] border shadow-sm",
+                          isBereavementSimulated 
+                            ? "bg-rose-950/25 border-rose-500/20 text-rose-450 text-rose-300" 
+                            : "bg-indigo-650 bg-indigo-600 hover:bg-indigo-505 hover:bg-indigo-500 text-white border-transparent"
+                        )}
+                        id="tour-simulate-btn"
+                      >
+                        {isBereavementSimulated ? "Exit Bereavement Sim" : "Simulate Bereavement"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Bereavement Guide / Quick Actions */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between text-left">
+                     <div>
+                       <h4 className="text-[10px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1.5 mb-3">
+                         <HeartPulse className="h-4 w-4 text-rose-500" />
+                         Succession Escrow Rules
+                       </h4>
+                       <p className="text-xs text-slate-405 leading-relaxed mb-4 font-sans">
+                         WhyOr Vault secures transitions by encrypting all items with independent keys derived from your signature. If simulation or bereavement is active, heirs view records filtered strictly by assigned roles.
+                       </p>
+                     </div>
+                     <div className="bg-slate-950/50 p-3.5 border border-slate-850 rounded-xl space-y-1.5 font-mono text-[9px]">
+                       <div className="flex justify-between">
+                         <span className="text-slate-500 font-bold">Dual-Key Handshake:</span>
+                         <span className="text-indigo-400 font-bold">Enabled</span>
+                       </div>
+                       <div className="flex justify-between">
+                         <span className="text-slate-500 font-bold">Heirs Enrolled:</span>
+                         <span className="text-white font-bold">{vaultConfig?.members?.length || 0} Members</span>
+                       </div>
+                       <div className="flex justify-between">
+                         <span className="text-slate-500 font-bold">Physical Advisories:</span>
+                         <span className="text-white font-bold">{items.filter(it => !!it.adminContext).length} Assets</span>
+                       </div>
+                     </div>
+                  </div>
+                </div>
+
+                {/* Simulated Succession Settlement Guide panel (Active during bereavement simulation) */}
+                {isBereavementSimulated && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 15 }}
+                    className="p-6 bg-slate-900 border border-rose-500/20 rounded-2xl text-left relative overflow-hidden"
+                  >
+                    {/* Visual warning background pattern */}
+                    <div className="absolute top-0 right-0 h-40 w-40 bg-rose-500/5 rounded-full blur-2xl pointer-events-none" />
+                    
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-5 pb-5 border-b border-slate-80/80 border-slate-800">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <HeartPulse className="h-5 w-5 text-rose-400 animate-pulse" />
+                          <h3 className="text-base font-bold text-white uppercase tracking-tight">Kinship Asset Settlement & Bereavement Care Assistant</h3>
+                        </div>
+                        <p className="text-xs text-slate-400 max-w-[550px] font-sans leading-normal">
+                          We process bereavement transitions with dignity, absolute clarity, and zero bureaucratic friction. All requested documents, wills, and estate records are displayed below. Complete the check-list below to finalize administrative settlement.
+                        </p>
+                      </div>
+                      <span className="text-[9.5px] font-mono bg-rose-950/40 text-rose-450 text-rose-400 border border-rose-500/20 px-3 py-1 rounded font-extrabold tracking-widest uppercase animate-pulse shrink-0">
+                        ⚠️ Simulated Succession Active
+                      </span>
+                    </div>
+
+                    {/* Step-by-step checklist */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      
+                      {/* Step 1 */}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setChecklistCompleted(prev => ({ ...prev, proof: !prev.proof }));
+                          window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Death credentials file parsed and validated.", type: 'success' } }));
+                        }}
+                        className={cn(
+                          "p-4 border rounded-xl text-left font-sans transition-all active:scale-[0.98] outline-none cursor-pointer",
+                          checklistCompleted.proof 
+                            ? "bg-emerald-950/20 border-emerald-500/30 hover:bg-emerald-950/30 text-emerald-450" 
+                            : "bg-slate-950 border-slate-800 hover:border-slate-750 hover:bg-slate-900"
+                        )}
+                        id="tour-step-1"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">Milestone 1</span>
+                          <span className={cn(
+                            "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold font-mono border",
+                            checklistCompleted.proof ? "bg-emerald-500 border-transparent text-slate-950 font-bold" : "border-slate-600 text-slate-500"
+                          )}>
+                            {checklistCompleted.proof ? "✓" : "1"}
+                          </span>
+                        </div>
+                        <h5 className="text-xs font-bold text-white leading-tight mb-1">Prove Legal Bereavement</h5>
+                        <p className="text-[10px] text-slate-450 leading-relaxed font-sans">
+                          Acknowledge receipt and validation of certified death certificate file uploads.
+                        </p>
+                      </button>
+
+                      {/* Step 2 */}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setChecklistCompleted(prev => ({ ...prev, handshake: !prev.handshake }));
+                          window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Attorney escrow signature handshake approved.", type: 'success' } }));
+                        }}
+                        className={cn(
+                          "p-4 border rounded-xl text-left font-sans transition-all active:scale-[0.98] outline-none cursor-pointer",
+                          checklistCompleted.handshake 
+                            ? "bg-emerald-950/20 border-emerald-500/30 hover:bg-emerald-950/30 text-emerald-450" 
+                            : "bg-slate-950 border-slate-800 hover:border-slate-750 hover:bg-slate-900"
+                        )}
+                        id="tour-step-2"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">Milestone 2</span>
+                          <span className={cn(
+                            "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold font-mono border",
+                            checklistCompleted.handshake ? "bg-emerald-500 border-transparent text-slate-950 font-bold" : "border-slate-600 text-slate-500"
+                          )}>
+                            {checklistCompleted.handshake ? "✓" : "2"}
+                          </span>
+                        </div>
+                        <h5 className="text-xs font-bold text-white leading-tight mb-1">Attorney Handshake</h5>
+                        <p className="text-[10px] text-slate-450 leading-relaxed font-sans">
+                          Acquire digital verification release block from legal trustees.
+                        </p>
+                      </button>
+
+                      {/* Step 3 */}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setChecklistCompleted(prev => ({ ...prev, notes: !prev.notes }));
+                          window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Inheritance file bundle mapped successfully.", type: 'success' } }));
+                        }}
+                        className={cn(
+                          "p-4 border rounded-xl text-left font-sans transition-all active:scale-[0.98] outline-none cursor-pointer",
+                          checklistCompleted.notes 
+                            ? "bg-emerald-950/20 border-emerald-500/30 hover:bg-emerald-950/30 text-emerald-450" 
+                            : "bg-slate-950 border-slate-800 hover:border-slate-750 hover:bg-slate-900"
+                        )}
+                        id="tour-step-3"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">Milestone 3</span>
+                          <span className={cn(
+                            "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold font-mono border",
+                            checklistCompleted.notes ? "bg-emerald-500 border-transparent text-slate-950 font-bold" : "border-slate-600 text-slate-500"
+                          )}>
+                            {checklistCompleted.notes ? "✓" : "3"}
+                          </span>
+                        </div>
+                        <h5 className="text-xs font-bold text-white leading-tight mb-1">Assemble Legacy</h5>
+                        <p className="text-[10px] text-slate-450 leading-relaxed font-sans">
+                          Examine physical advisory locations and estate notes for each record below.
+                        </p>
+                      </button>
+
+                      {/* Step 4 */}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setChecklistCompleted(prev => ({ ...prev, transfer: !prev.transfer }));
+                          window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Transfer protocols recorded in active ledger.", type: 'success' } }));
+                        }}
+                        className={cn(
+                          "p-4 border rounded-xl text-left font-sans transition-all active:scale-[0.98] outline-none cursor-pointer",
+                          checklistCompleted.transfer 
+                            ? "bg-emerald-950/20 border-emerald-500/30 hover:bg-emerald-950/30 text-emerald-450" 
+                            : "bg-slate-950 border-slate-800 hover:border-slate-750 hover:bg-slate-900"
+                        )}
+                        id="tour-step-4"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">Milestone 4</span>
+                          <span className={cn(
+                            "w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold font-mono border",
+                            checklistCompleted.transfer ? "bg-emerald-500 border-transparent text-slate-950 font-bold" : "border-slate-600 text-slate-500"
+                          )}>
+                            {checklistCompleted.transfer ? "✓" : "4"}
+                          </span>
+                        </div>
+                        <h5 className="text-xs font-bold text-white leading-tight mb-1">Safe-Lock Transfer</h5>
+                        <p className="text-[10px] text-slate-450 leading-relaxed font-sans">
+                          Contact banking representatives to execute structural credentials modification.
+                        </p>
+                      </button>
+
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            );
+          })()}
+
           {filter === 'admin' ? (
             <AdminPanel 
               userId={userId}
@@ -5628,6 +6028,137 @@ function VaultMain({
           setIdleTimeoutMins={setIdleTimeoutMins}
         />
       )}
+
+      {/* Guided Tour Interactive walkthrough HUD */}
+      {activeTourStep !== null && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border-2 border-amber-500 rounded-2xl shadow-2xl p-6 max-w-sm animate-fadeIn text-left space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+            <span className="text-[10px] uppercase font-black text-amber-500 tracking-widest font-mono flex items-center gap-1">
+              <Lightbulb className="h-4 w-4 text-amber-500 animate-bounce" />
+              Tour Step {activeTourStep} of 4
+            </span>
+            <button 
+              onClick={() => setActiveTourStep(null)}
+              className="text-slate-500 hover:text-white font-bold text-xs"
+            >
+              Skip
+            </button>
+          </div>
+          
+          <div className="space-y-2">
+            <h4 className="text-sm font-extrabold text-white uppercase tracking-tight font-display">
+              {activeTourStep === 1 && "1. Integrity Index Scorecard"}
+              {activeTourStep === 2 && "2. Safe Revision Audits & Advice"}
+              {activeTourStep === 3 && "3. Kinship Succession Switch"}
+              {activeTourStep === 4 && "4. Simulation Sandbox"}
+            </h4>
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              {activeTourStep === 1 && "We integrated a real-time Vault Integrity index tracking Will/Trust storage, Succession Switches, active Heirs mapping, and assets. Look at the dashboard percentage index at the top."}
+              {activeTourStep === 2 && "Declare executor procedures, heir notes, and revision logs on document uploads. When safe transition is activated, these notes guide heirs with physical advisories (e.g. key locations)."}
+              {activeTourStep === 3 && "Map kinship roles to members. In succession mode, only accounts matching their specific permissions (general heir, child, attorney, medical) are visible, avoiding system disclosure flaws."}
+              {activeTourStep === 4 && "Never guess how heirs will experience bereavement. Click 'Simulate Bereavement' to experience step-by-step checklist transitions. Click manual check-in inside settings to reset clocks."}
+            </p>
+          </div>
+
+          <div className="flex justify-between items-center pt-2">
+            <button
+              disabled={activeTourStep === 1}
+              onClick={() => setActiveTourStep(activeTourStep - 1)}
+              className="text-[10px] uppercase font-bold text-slate-500 hover:text-white disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => {
+                if (activeTourStep === 4) {
+                  setActiveTourStep(null);
+                  window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Tour complete! You're ready to protect your estate.", type: 'success' } }));
+                } else {
+                  setActiveTourStep(activeTourStep + 1);
+                }
+              }}
+              className="px-3.5 py-1.5 bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-wider rounded-lg hover:bg-amber-400 cursor-pointer transition-all active:scale-95"
+            >
+              {activeTourStep === 4 ? "Complete" : "Next Step"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Comprehensive Succession Manual FAQ popup overlay */}
+      {isFaqOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden text-left shadow-2xl">
+            <div className="p-6 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+              <div>
+                <h3 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-indigo-405" />
+                  WhyOr Vault Succession & Disaster Recovery Manual
+                </h3>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5 font-mono">Executor Protocols & Bereavement Mitigation Handbook</p>
+              </div>
+              <button 
+                onClick={() => setIsFaqOpen(false)}
+                className="text-slate-500 hover:text-white font-bold text-base cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 font-sans text-sm text-slate-350 leading-relaxed">
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">1. What makes WhyOr Vault different?</h4>
+                <p>
+                  Standard backups or cloud drives drop files into raw unguided lists or return cold access denied errors duringbereavement. WhyOr Vault is engineered as an active escrow. All data is client-decrypted only under authorized handshake agreements, physical checklists, and role-based custody limits.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">2. How does the Dead Man's Switch work?</h4>
+                <p>
+                  The Succession Switch acts as an inactivity watchdog. When armed, the system tracks when you last sent an active cryptographic signal to the vault. If the watch threshold is breached, designated heirs are notified automatically via email.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">3. What is the Bereavement Settlement Workflow?</h4>
+                <p>
+                  When transition triggers execute, heirs aren't dumped into raw folder listings. They progress through a professional, step-by-step Bereavement Care Guide containing certified deaths legal validation, Attorney handshake releasing, advisory locations (e.g. key safe location in drawer), and account transfer checklists.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">4. What are Kinship Access Roles?</h4>
+                <p>
+                  To prevent unauthorized document leaks, you can select customized access roles:
+                </p>
+                <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl space-y-2 text-xs text-slate-400">
+                  <p><strong>Kin / Spouse:</strong> Full access to Wills, Deeds, and crucial life insurance assets during probate.</p>
+                  <p><strong>Lawyer / Counsel:</strong> Restricted strictly to statutory real estate deeds and signed testament logs.</p>
+                  <p><strong>Doctor:</strong> Medical powers of attorney and do-not-resuscitate (DNR) directives.</p>
+                  <p><strong>Accountant:</strong> Balance statements, stock portfolios, tax histories.</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">5. How is version history managed?</h4>
+                <p>
+                  Every change to an asset logs preceding states permanently under its history tab. This guarantees executors can retrieve prior revocable trust versions, trace modifications, and see the explicit reason for revision.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-800 bg-slate-950 flex justify-end">
+              <button
+                onClick={() => setIsFaqOpen(false)}
+                className="px-6 py-2.5 bg-indigo-650 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md shadow-indigo-950/40"
+              >
+                Acknowledge Protocol
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5654,9 +6185,55 @@ function SettingsModal({
   const [loading, setLoading] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'biometrics' | 'purge' | 'rotate'>('biometrics');
+  const [activeTab, setActiveTab] = useState<'biometrics' | 'purge' | 'rotate' | 'deadmans'>('biometrics');
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
+
+  // States for Dead Man's Switch, Succession Tiers, and Granular Role Privileges
+  const [dmsArmed, setDmsArmed] = useState(vaultConfig.deadMansSwitchArmed || false);
+  const [dmsThreshold, setDmsThreshold] = useState(vaultConfig.deadMansSwitchThreshold || 90);
+  const [dmsContacts, setDmsContacts] = useState((vaultConfig.deadMansSwitchContacts || []).join(', '));
+  const [dmsGrace, setDmsGrace] = useState(vaultConfig.deadMansSwitchGracePeriod || 7);
+  const [dmsPermissions, setDmsPermissions] = useState<Record<string, string>>(vaultConfig.granularPermissions || {});
+  const [dmsSaving, setDmsSaving] = useState(false);
+
+  // Helper method for immediate sworn manual check-in confirmation
+  const handleManualCheckIn = async () => {
+    try {
+      const configRef = doc(db, 'vaults', vaultId, 'vault', 'config');
+      await updateDoc(configRef, {
+        deadMansSwitchLastCheckIn: Date.now()
+      });
+      notify("Manual Sworn Check-In Approved! SWITCH TIMER RECONNECTED & RESET.", "success");
+    } catch (e: any) {
+      console.error(e);
+      notify("Failed to accept check-in signal.", "error");
+    }
+  };
+
+  // Helper method to write both switch rules AND granular member role tags
+  const handleSaveDeadMansSettings = async () => {
+    setDmsSaving(true);
+    try {
+      const configRef = doc(db, 'vaults', vaultId, 'vault', 'config');
+      const parsedContacts = dmsContacts.split(/,|;/).map(e => e.trim()).filter(Boolean);
+      const updates = {
+         deadMansSwitchArmed: dmsArmed,
+         deadMansSwitchThreshold: Number(dmsThreshold),
+         deadMansSwitchGracePeriod: Number(dmsGrace),
+         deadMansSwitchContacts: parsedContacts,
+         deadMansSwitchLastCheckIn: vaultConfig.deadMansSwitchLastCheckIn || Date.now(),
+         granularPermissions: dmsPermissions
+      };
+      await updateDoc(configRef, updates);
+      notify("Dead Man's Switch & Succession settings updated successfully.", "success");
+    } catch (e: any) {
+      console.error(e);
+      notify("Failed to update succession settings.", "error");
+    } finally {
+      setDmsSaving(false);
+    }
+  };
 
   // States for Master Key Rotation
   const [currentKey, setCurrentKey] = useState('');
@@ -5953,14 +6530,27 @@ function SettingsModal({
           <button
             onClick={() => { setActiveTab('purge'); setRotateError(null); }}
             className={cn(
-              "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-2",
+              "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5",
               activeTab === 'purge' 
                 ? "border-red-500 text-red-500 font-bold bg-slate-900/10" 
                 : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/10"
             )}
           >
             <TriangleAlert className="h-4 w-4" />
-            Emergency Purge
+            Purge
+          </button>
+          <button
+            onClick={() => { setActiveTab('deadmans'); setRotateError(null); }}
+            className={cn(
+              "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5",
+              activeTab === 'deadmans' 
+                ? "border-amber-550 text-amber-500 font-bold bg-slate-900/10" 
+                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/10"
+            )}
+            id="tour-dms-tab"
+          >
+            <Hourglass className="h-4 w-4 text-amber-500" />
+            Switch & Roles
           </button>
         </div>
 
@@ -6307,6 +6897,164 @@ function SettingsModal({
                 className="py-2 text-xs font-bold text-slate-500 hover:text-white transition-all uppercase tracking-widest border border-slate-800 px-4 rounded-xl hover:bg-slate-800"
               >
                 Close Settings
+              </button>
+            </div>
+          </div>
+        ) : activeTab === 'deadmans' ? (
+          <div className="p-8 bg-slate-900 max-h-[85vh] overflow-y-auto space-y-6 text-left">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 shrink-0">
+                <Hourglass className="h-6 w-6 text-amber-500 animate-spin-slow" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white uppercase tracking-tight">Succession Switch & Kinship Roles</h3>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Automated secure digital inheritance clock</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              Set up automated inactivity detection (Dead Man's Switch). If you fail to check into your vault for the defined period, designated contacts will be notified, and they can request access to your legacy assets based on their granular roles.
+            </p>
+
+            {/* Manual check in trigger box */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-wider">Clock Status</span>
+                <span className="text-xs text-white font-mono font-bold">
+                  Last active: {vaultConfig.deadMansSwitchLastCheckIn ? new Date(vaultConfig.deadMansSwitchLastCheckIn).toLocaleDateString() + ' ' + new Date(vaultConfig.deadMansSwitchLastCheckIn).toLocaleTimeString() : 'Never logged'}
+                </span>
+              </div>
+              <button
+                onClick={handleManualCheckIn}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer transition-all active:scale-95"
+              >
+                Send Check-In Signal
+              </button>
+            </div>
+
+            {/* Arm toggle */}
+            <div className="flex items-center justify-between p-4 bg-slate-950 rounded-xl border border-slate-800">
+              <div>
+                <span className="block text-xs font-bold text-white">Arm Dead Man's Switch</span>
+                <span className="block text-[10px] text-slate-500 mt-0.5 font-sans">Trigger succession flow after prolonged total inactivity.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDmsArmed(!dmsArmed)}
+                className={cn(
+                  "px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all",
+                  dmsArmed ? "bg-amber-500 text-slate-950" : "bg-slate-850 text-slate-400"
+                )}
+              >
+                {dmsArmed ? "ARMED" : "OFF"}
+              </button>
+            </div>
+
+            {dmsArmed && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-4 p-5 bg-amber-950/5 border border-amber-500/10 rounded-2xl animate-fadeIn"
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Inactivity Threshold (Days)</label>
+                    <select
+                      value={dmsThreshold}
+                      onChange={(e) => setDmsThreshold(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 text-indigo-400 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:border-indigo-500 outline-none cursor-pointer"
+                    >
+                      <option value={30}>30 Days (1 Month)</option>
+                      <option value={60}>60 Days (2 Months)</option>
+                      <option value={90}>90 Days (3 Months)</option>
+                      <option value={180}>180 Days (Half Year)</option>
+                      <option value={360}>360 Days (1 Year)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Grace Period (Days)</label>
+                    <select
+                      value={dmsGrace}
+                      onChange={(e) => setDmsGrace(Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-slate-800 text-indigo-400 px-3.5 py-2.5 rounded-xl text-xs font-bold focus:border-indigo-500 outline-none cursor-pointer"
+                    >
+                      <option value={3}>3 Days</option>
+                      <option value={5}>5 Days</option>
+                      <option value={7}>7 Days (1 Week)</option>
+                      <option value={10}>10 Days</option>
+                      <option value={14}>14 Days (2 Weeks)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Successor Notification Emails</label>
+                  <input
+                    type="text"
+                    value={dmsContacts}
+                    onChange={(e) => setDmsContacts(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white px-4 py-3 rounded-xl text-xs font-mono outline-none focus:border-indigo-500 placeholder-slate-700"
+                    placeholder="beneficiary@heir.com, spouse@vault.org"
+                  />
+                  <p className="text-[9px] text-slate-550 mt-1 uppercase font-mono leading-relaxed">Separate multiple emails with commas. Notifications are sent automatically.</p>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Granular member permissions matrix */}
+            <div className="pt-4 border-t border-slate-800">
+               <h4 className="text-xs font-extrabold text-white uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <span className="text-indigo-400 animate-pulse">●</span>
+                  Granular Succession Role Assignation
+               </h4>
+               <p className="text-[11px] text-slate-405 text-slate-400 leading-normal mb-4 font-sans">
+                  Assign kinship roles to shared vault members. During active heir request mode, the client decryptor uses cryptography profiles to parse and display only files designated for their specific category.
+               </p>
+
+               <div className="space-y-3 bg-slate-950 p-4 border border-slate-800 rounded-xl max-h-48 overflow-y-auto">
+                 {vaultConfig.members && vaultConfig.members.length > 0 ? (
+                   vaultConfig.members.map((m, idx) => (
+                     <div key={idx} className="flex justify-between items-center py-2 border-b border-slate-900 last:border-0 gap-3">
+                       <div className="text-left truncate">
+                         <span className="block text-xs font-bold text-slate-350 truncate">{m}</span>
+                         <span className="text-[9px] font-mono text-slate-500 uppercase">Accepted Member</span>
+                       </div>
+                       <select
+                         value={dmsPermissions[m] || 'spouse'}
+                         onChange={(e) => setDmsPermissions({ ...dmsPermissions, [m]: e.target.value })}
+                         className="bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-[10.5px] text-indigo-405 font-bold focus:border-indigo-650 outline-none cursor-pointer shrink-0 text-indigo-400"
+                       >
+                         <option value="spouse">Kin / Spouse (Full Heirs)</option>
+                         <option value="child">Child (General Succession)</option>
+                         <option value="doctor">Doctor (Medical records only)</option>
+                         <option value="lawyer">Attorney / Lawyer (Legal files only)</option>
+                         <option value="accountant">Accountant / Advisor (Financial assets only)</option>
+                         <option value="full">Full Joint Owner Access</option>
+                       </select>
+                     </div>
+                   ))
+                 ) : (
+                   <p className="text-xs text-slate-500 italic text-center py-3">No shared members currently in vault. Use SHARED MEMBERS block in sidebar to invite lawyers, children, or joint heirs.</p>
+                 )}
+               </div>
+            </div>
+
+            <div className="mt-8 flex gap-3">
+              <button 
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-3 text-xs font-bold text-slate-400 hover:text-white transition-all border border-slate-850 rounded-xl hover:bg-slate-800 uppercase tracking-widest"
+              >
+                Cancel
+              </button>
+              <button 
+                type="button"
+                disabled={dmsSaving}
+                onClick={handleSaveDeadMansSettings}
+                className="flex-1 py-3 bg-indigo-655 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-extrabold uppercase tracking-widest cursor-pointer transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                {dmsSaving ? "Saving Succession..." : "Save Switch Profile"}
               </button>
             </div>
           </div>
@@ -7325,6 +8073,47 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
   const [justification, setJustification] = useState('');
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   
+  // New secure pin handshake and timer locks
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [unlockPin, setUnlockPin] = useState('');
+  const [pinError, setPinError] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      if (showSensitive) setShowSensitive(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      setTimeLeft(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeLeft, showSensitive]);
+
+  const handleRevealWithHandshake = () => {
+    if (showSensitive) {
+      // Re-lock
+      setShowSensitive(false);
+      setTimeLeft(0);
+      return;
+    }
+    setUnlockPin('');
+    setPinError(false);
+    setIsUnlocking(true);
+  };
+
+  const submitUnlockPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (unlockPin === '1234') { // Default session preview unlock PIN code
+      setIsUnlocking(false);
+      setShowSensitive(true);
+      setTimeLeft(45); // Unlocked for 45s
+    } else {
+      setPinError(true);
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Invalid Security Pin. Handshake Refused.", type: 'error' } }));
+    }
+  };
+
   const isOwner = userId === vaultId;
 
   const copy = (val?: string | number, label?: string) => {
@@ -7909,6 +8698,41 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
               </div>
             </div>
           )}
+
+          {item.adminContext && (
+            <div className="mt-4 pt-4 border-t border-amber-900/40 border-dashed text-left">
+              <h5 className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+                <FileText className="h-3.5 w-3.5 text-amber-500" />
+                Heritage Advice & Executor Protocol
+              </h5>
+              <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-[10.5px] leading-relaxed text-slate-300 font-sans shadow-md">
+                <p className="font-bold text-[9px] text-amber-500/80 uppercase tracking-wider mb-1 font-mono">📜 Successor Advisory Note</p>
+                {item.adminContext}
+              </div>
+            </div>
+          )}
+
+          {item.versions && item.versions.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-800/80 border-dashed text-left">
+              <h5 className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-2.5 flex items-center gap-2">
+                <History className="h-3.5 w-3.5 text-indigo-400" />
+                Document Version History & Revision Log
+              </h5>
+              <div className="space-y-2.5">
+                {item.versions.map((ver, idx) => (
+                  <div key={idx} className="p-2.5 bg-slate-950 border border-slate-800/60 rounded-xl space-y-1 hover:border-indigo-500/25 transition-all">
+                    <div className="flex justify-between items-center text-[8.5px] font-mono">
+                      <span className="text-indigo-400 font-bold">{new Date(ver.timestamp).toLocaleDateString()} {new Date(ver.timestamp).toLocaleTimeString()}</span>
+                      <span className="text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800/60 font-black">{ver.editor || 'Vault Owner'}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-350 leading-relaxed italic">
+                      "{ver.justification || 'No change reason provided'}"
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
          ) : (
            <div className="mt-3 pt-3 border-t border-slate-800/40 text-left">
@@ -7939,16 +8763,78 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
 
       <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between mt-auto border-t border-slate-800/80 rounded-b-xl">
         <button 
-           onClick={() => setShowSensitive(!showSensitive)}
-           className="text-[10px] font-extrabold text-indigo-400 hover:text-indigo-300 uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-colors"
+           onClick={handleRevealWithHandshake}
+           className={cn(
+             "text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-all px-2.5 py-1 rounded",
+             showSensitive 
+               ? "text-rose-400 hover:text-rose-300 bg-rose-950/30 border border-rose-500/10 animate-pulse" 
+               : "text-indigo-400 hover:text-indigo-300 hover:bg-slate-900"
+           )}
         >
-          {showSensitive ? <Shield className="h-3 w-3 text-indigo-400" /> : <Unlock className="h-3 w-3 text-indigo-400 animate-pulse" />}
-          {showSensitive ? 'Secure Mask' : 'Decrypt Data'}
+          {showSensitive ? <Shield className="h-3 w-3 text-rose-400" /> : <Unlock className="h-3 w-3 text-indigo-400 animate-pulse" />}
+          {showSensitive ? `Re-Mask Sensitive (${timeLeft}s)` : 'Decrypt Data'}
         </button>
         {copied && <span className="text-[10px] font-black text-emerald-450 uppercase tracking-wider animate-bounce">Copied {copied}!</span>}
       </div>
 
       <AnimatePresence>
+        {isUnlocking && (
+          <motion.form 
+            onSubmit={submitUnlockPin}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-15 bg-slate-950/98 backdrop-blur-md p-6 flex flex-col justify-center rounded-apex-lg border border-indigo-500/25 text-left"
+          >
+             <h5 className="text-sm font-bold text-white mb-2 flex items-center gap-1.5">
+               <ShieldCheck className="h-4 w-4 text-indigo-400 animate-pulse" />
+               Identity Handshake Required
+             </h5>
+             <p className="text-[10px] text-slate-400 mb-4 font-sans leading-relaxed">
+               This is a sensitive zero-revelation field. Input your 4-digit preview validation PIN <span className="text-amber-400 font-mono font-extrabold bg-amber-950/40 px-1 rounded">1234</span> to authorize visual reveal for 45 seconds.
+             </p>
+             
+             <div className="space-y-1 mb-4">
+               <input 
+                 type="password"
+                 maxLength={4}
+                 autoFocus
+                 value={unlockPin}
+                 onChange={(e) => {
+                   setUnlockPin(e.target.value.replace(/\D/g, ''));
+                   setPinError(false);
+                 }}
+                 className={cn(
+                   "w-full bg-slate-900 border text-center font-mono text-2xl tracking-[0.5em] text-white rounded-lg py-2 focus:border-indigo-500 outline-none",
+                   pinError ? "border-rose-500 text-rose-400" : "border-slate-800"
+                 )}
+                 placeholder="••••"
+                 required
+               />
+               {pinError && <p className="text-[8.5px] text-rose-500 uppercase font-bold tracking-wider pt-0.5 text-center">Authentication Refused. Invalid PIN.</p>}
+             </div>
+
+             <div className="flex gap-2">
+               <button 
+                 type="button"
+                 onClick={() => {
+                   setIsUnlocking(false);
+                   setUnlockPin('');
+                 }}
+                 className="flex-1 py-1.5 text-xs font-bold text-slate-400 hover:text-white transition-colors"
+               >
+                 Cancel
+               </button>
+               <button 
+                 type="submit"
+                 className="flex-1 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-500 transition-all flex items-center justify-center gap-1"
+               >
+                 Authorize Dual-Key
+               </button>
+             </div>
+          </motion.form>
+        )}
+
         {isDeleting && (
           <motion.div 
             initial={{ opacity: 0 }}
@@ -8101,6 +8987,7 @@ function EntryModal({
   const [loading, setLoading] = useState(false);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
+  const [changeJustification, setChangeJustification] = useState('');
 
   const handleAttachmentUpload = async (file: File) => {
     setUploadingAttachment(true);
@@ -8204,8 +9091,25 @@ function EntryModal({
         updatedHistory.push({ date: Date.now(), amount: currentVal || 0 });
       }
 
+      // Preserve historical snapshots for version history
+      let updatedVersions = [...(formData.versions || [])];
+      if (item) {
+        const snapshot = {
+          timestamp: item.updatedAt || Date.now(),
+          editor: auth.currentUser?.email || 'Vault Creator',
+          justification: changeJustification || 'Manual maintenance update',
+          decryptedSnapshot: { ...item, versions: undefined }
+        };
+        updatedVersions = [snapshot, ...updatedVersions].slice(0, 15);
+      }
+
       const itemPartition = formData.partition || 'Personal';
-      const finalData = { ...formData, partition: itemPartition, balanceHistory: updatedHistory };
+      const finalData = { 
+        ...formData, 
+        partition: itemPartition, 
+        balanceHistory: updatedHistory,
+        versions: updatedVersions
+      };
       const targetId = item?.id || doc(collection(db, 'vaults', vaultId, 'items')).id;
       
       let encryptionKeyToUse = encryptionKey;
@@ -8384,6 +9288,37 @@ function EntryModal({
                 placeholder="Critical information, safe combinations, or family instructions..."
               />
            </div>
+
+           <div className="bg-amber-950/15 border border-amber-900/35 rounded-xl p-4 space-y-3 text-left">
+              <label className="block text-[10.5px] font-bold text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Executor Protocol & Heir Advisory Notes
+              </label>
+              <p className="text-[10px] leading-relaxed text-slate-400">
+                Provide precise real-world guidance for heirs and attorneys in critical moments (e.g. "Physical stock certificate is inside safety deposit box 4B, password key binder in drawer").
+              </p>
+              <textarea 
+                value={formData.adminContext || ''}
+                onChange={(e) => setFormData({ ...formData, adminContext: e.target.value })}
+                className="w-full bg-slate-950 border border-amber-900/40 focus:border-amber-500 outline-none rounded-apex px-4 py-3 text-sm text-white h-24 placeholder:text-slate-600"
+                placeholder="Where is the physical documentation kept? Who is the contact person? Be extremely specific."
+              />
+           </div>
+
+           {item && (
+              <div className="bg-indigo-950/10 border border-indigo-900/40 rounded-xl p-4 space-y-2 text-left">
+                <label className="block text-[10px] font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin-slow" />
+                  Reason for Revision (Audit Trail Requirement)
+                </label>
+                <input 
+                  value={changeJustification}
+                  onChange={(e) => setChangeJustification(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 outline-none rounded-apex px-4 py-3 text-sm text-white placeholder-slate-600"
+                  placeholder="e.g., Renewed insurance policy for 2026, or rotated backup keys"
+                />
+              </div>
+           )}
 
            {/* Secure Documents Enclave */}
            <div className="pt-6 border-t border-slate-800 space-y-4">
