@@ -36,15 +36,16 @@ export async function generateMemberKeyPair(): Promise<MemberKeyPair> {
 
 export async function wrapMemberPrivateKey(privateKey: CryptoKey, memberFinalKEK: CryptoKey): Promise<{ wrapped: string; iv: string }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const wrappedBuf = await crypto.subtle.wrapKey('jwk', privateKey, memberFinalKEK, { name: 'AES-GCM', iv });
+  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+  const plaintext = new TextEncoder().encode(JSON.stringify(jwk));
+  const wrappedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, memberFinalKEK, plaintext);
   return { wrapped: b64(new Uint8Array(wrappedBuf)), iv: b64(iv) };
 }
 
 export async function unwrapMemberPrivateKey(wrapped: string, iv: string, memberFinalKEK: CryptoKey): Promise<CryptoKey> {
-  return crypto.subtle.unwrapKey(
-    'jwk', unb64(wrapped), memberFinalKEK, { name: 'AES-GCM', iv: unb64(iv) },
-    { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']
-  );
+  const plaintextBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, memberFinalKEK, unb64(wrapped));
+  const jwk = JSON.parse(new TextDecoder().decode(plaintextBuf)) as JsonWebKey;
+  return crypto.subtle.importKey('jwk', jwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveKey']);
 }
 
 export interface ShareToken {
@@ -58,7 +59,7 @@ export interface ShareToken {
 }
 
 export async function createShareToken(
-  partitionSubKey: CryptoKey,
+  partitionSubKeyRaw: Uint8Array,
   partitionId: string,
   version: number,
   memberPublicKeyJwk: JsonWebKey,
@@ -73,11 +74,11 @@ export async function createShareToken(
     ephemeralPair.privateKey,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['wrapKey']
+    ['encrypt']
   );
 
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const wrappedBuf = await crypto.subtle.wrapKey('raw', partitionSubKey, sharedKey, { name: 'AES-GCM', iv });
+  const wrappedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sharedKey, partitionSubKeyRaw);
   const ephemeralPublicJwk = await crypto.subtle.exportKey('jwk', ephemeralPair.publicKey);
 
   return {
@@ -100,23 +101,24 @@ export async function unwrapShareToken(token: ShareToken, memberPrivateKey: Cryp
     memberPrivateKey,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['unwrapKey']
+    ['decrypt']
   );
-  return crypto.subtle.unwrapKey(
-    'raw', unb64(token.wrapped), sharedKey, { name: 'AES-GCM', iv: unb64(token.iv) },
-    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-  );
+  const rawBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(token.iv) }, sharedKey, unb64(token.wrapped));
+  const rawBytes = new Uint8Array(rawBuf);
+  const key = await crypto.subtle.importKey('raw', rawBytes, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  rawBytes.fill(0);
+  return key;
 }
 
 export async function reissueShareTokensAfterRotation(
-  newPartitionSubKey: CryptoKey,
+  newPartitionSubKeyRaw: Uint8Array,
   partitionId: string,
   newVersion: number,
   remainingMembers: { publicKeyJwk: JsonWebKey; uid: string }[]
 ): Promise<Record<string, ShareToken>> {
   const tokens: Record<string, ShareToken> = {};
   for (const member of remainingMembers) {
-    tokens[member.uid] = await createShareToken(newPartitionSubKey, partitionId, newVersion, member.publicKeyJwk);
+    tokens[member.uid] = await createShareToken(newPartitionSubKeyRaw, partitionId, newVersion, member.publicKeyJwk);
   }
   return tokens;
 }

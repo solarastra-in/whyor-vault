@@ -34,8 +34,9 @@ export async function enrollDuressVault(
   const saltBytes = generateSaltBytes(16);
   const baseKEKBytes = await deriveBaseKEK(duressPassphrase, saltBytes);
   const { key: finalKEK } = await deriveFinalKEK(baseKEKBytes);
-  const { key: dek } = await generateMasterDEK();
-  const { wrapped, iv } = await wrapDEK(dek, finalKEK);
+  const { raw: dekRaw } = await generateMasterDEK();
+  const { wrapped, iv } = await wrapDEK(dekRaw, finalKEK);
+  dekRaw.fill(0);
 
   void substituteContentSeed;
 

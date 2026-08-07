@@ -128,24 +128,24 @@ export async function generateMasterDEK(): Promise<{ key: CryptoKey; raw: Uint8A
   return { key, raw };
 }
 
-export async function wrapDEK(dek: CryptoKey, finalKEK: CryptoKey): Promise<{ wrapped: string; iv: string }> {
+export async function wrapDEK(dekRaw: Uint8Array, finalKEK: CryptoKey): Promise<{ wrapped: string; iv: string }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const wrappedBuf = await crypto.subtle.wrapKey('raw', dek, finalKEK, { name: AES, iv });
-  return { wrapped: bytesToB64(new Uint8Array(wrappedBuf)), iv: bytesToB64(iv) };
+  const ctBuf = await crypto.subtle.encrypt({ name: AES, iv }, finalKEK, dekRaw);
+  return { wrapped: bytesToB64(new Uint8Array(ctBuf)), iv: bytesToB64(iv) };
 }
 
 export async function unwrapDEK(wrappedB64: string, ivB64: string, finalKEK: CryptoKey): Promise<CryptoKey> {
-  const wrapped = b64ToBytes(wrappedB64);
-  const iv = b64ToBytes(ivB64);
-  return crypto.subtle.unwrapKey(
-    'raw', wrapped, finalKEK, { name: AES, iv },
-    { name: AES, length: 256 }, false,
-    ['encrypt', 'decrypt', 'wrapKey', 'unwrapKey']
+  const ptBuf = await crypto.subtle.decrypt(
+    { name: AES, iv: b64ToBytes(ivB64) }, finalKEK, b64ToBytes(wrappedB64)
   );
+  const rawDek = new Uint8Array(ptBuf);
+  const key = await crypto.subtle.importKey('raw', rawDek, { name: AES, length: 256 }, false, ['encrypt', 'decrypt']);
+  rawDek.fill(0);
+  return key;
 }
 
 export async function importDekAsHkdfBase(dekRaw: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', dekRaw, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.importKey('raw', dekRaw, 'HKDF', false, ['deriveKey', 'deriveBits']);
 }
 
 // Claim 2: HKDF partition sub-keys with version + partition + owner UID
@@ -169,6 +169,18 @@ export async function derivePartitionSubKeyV2(opts: PartitionKeyOptions): Promis
     false,
     ['encrypt', 'decrypt']
   );
+}
+
+export async function derivePartitionSubKeyRawV2(opts: PartitionKeyOptions): Promise<Uint8Array> {
+  const info = new TextEncoder().encode(
+    `whyor-partition-v${opts.version}:${opts.partitionId}:${opts.ownerUid}`
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: opts.salt, info },
+    opts.dekHkdfBase,
+    256
+  );
+  return new Uint8Array(bits);
 }
 
 export const PARTITION_TAXONOMY = [
@@ -235,9 +247,8 @@ export async function createNewVaultKeyMaterial(
 
   const { key: dek, raw: dekRaw } = await generateMasterDEK();
   const dekHkdfBase = await importDekAsHkdfBase(dekRaw);
+  const { wrapped, iv } = await wrapDEK(dekRaw, finalKEK);
   dekRaw.fill(0);
-
-  const { wrapped, iv } = await wrapDEK(dek, finalKEK);
 
   return {
     kdfVersion: KDF_VERSION_CURRENT,
@@ -260,13 +271,12 @@ export async function unlockV2Vault(
   const saltBytes = b64ToBytes(argonPbkdfSaltB64);
   const baseKEKBytes = await deriveBaseKEK(passphrase, saltBytes);
   const { key: finalKEK, usedPRF } = await deriveFinalKEK(baseKEKBytes, prfOutput);
-  const dek = await unwrapDEK(wrappedDEK, wrappedDEKIv, finalKEK);
 
-  const extractableDek = await crypto.subtle.unwrapKey(
-    'raw', b64ToBytes(wrappedDEK), finalKEK, { name: AES, iv: b64ToBytes(wrappedDEKIv) },
-    { name: AES, length: 256 }, true, ['encrypt', 'decrypt']
+  const ptBuf = await crypto.subtle.decrypt(
+    { name: AES, iv: b64ToBytes(wrappedDEKIv) }, finalKEK, b64ToBytes(wrappedDEK)
   );
-  const rawDek = new Uint8Array(await crypto.subtle.exportKey('raw', extractableDek));
+  const rawDek = new Uint8Array(ptBuf);
+  const dek = await crypto.subtle.importKey('raw', rawDek, { name: AES, length: 256 }, false, ['encrypt', 'decrypt']);
   const dekHkdfBase = await importDekAsHkdfBase(rawDek);
   rawDek.fill(0);
 

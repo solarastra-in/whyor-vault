@@ -298,6 +298,8 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
 
     if (extResults.prf?.results?.first) {
       hardwareEntropyBuffer = extResults.prf.results.first;
+    } else if (prfSaltStr) {
+      throw new Error("Hardware authenticator failed PRF verification. Cryptographic token possession cannot be verified.");
     } else {
       console.warn("PRF extension not evaluated. Binding token raw_id as KEK derivation entropy component.");
       hardwareEntropyBuffer = assertion.rawId;
