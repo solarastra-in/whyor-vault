@@ -365,7 +365,7 @@ const writeBatch = (dbInstance: any) => {
 import { 
   Shield, Lock, Unlock, Key, RefreshCw, LogOut, Plus, Search, 
   CreditCard, Landmark, KeySquare, MoreVertical, Trash2, Edit3, 
-  Copy, Check, AlertCircle, TriangleAlert, Github, Fingerprint, ShieldCheck, Cpu, LogIn,
+  Copy, Check, CheckCircle2, AlertCircle, TriangleAlert, Github, Fingerprint, ShieldCheck, Cpu, LogIn,
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
@@ -392,6 +392,8 @@ import { handleFirestoreError, OperationType } from './lib/error-handler';
 import DatabaseStatus from './components/DatabaseStatus';
 import { 
   checkBiometricSupport, 
+  checkPlatformAuthenticatorStatus,
+  AuthenticatorStatus,
   isBiometricRegistered, 
   registerBiometrics, 
   removeBiometrics, 
@@ -4047,18 +4049,25 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
   const [attempt, setAttempt] = useState(config.failedAttempts);
   const [hasBiometrics, setHasBiometrics] = useState(false);
   const [biometricError, setBiometricError] = useState<string | null>(null);
+  const [showQuestionsFallback, setShowQuestionsFallback] = useState(false);
+  const [authStatus, setAuthStatus] = useState<AuthenticatorStatus | null>(null);
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
   const isSandbox = getIsSandbox();
 
   useEffect(() => {
     async function check() {
-      const supported = await checkBiometricSupport();
-      if (supported && isBiometricRegistered(vaultId)) {
+      const status = await checkPlatformAuthenticatorStatus();
+      setAuthStatus(status);
+      
+      const registered = isBiometricRegistered(vaultId);
+      if (registered) {
         setHasBiometrics(true);
-        // Automatically request WebAuthn PRF evaluation during login sequence
+        // FORCE BIOMETRICS: Automatically trigger biometric unlock on mount when registered
         setTimeout(() => {
           handleBiometricUnlock();
-        }, 500);
+        }, 300);
+      } else {
+        setHasBiometrics(false);
       }
     }
     check();
@@ -4322,101 +4331,177 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50" />
           
-          {hasBiometrics && (
-             <div className="mb-8 p-6 bg-slate-950/80 border border-indigo-500/20 rounded-2xl relative overflow-hidden transition-all hover:border-indigo-500/40">
-               <div className="absolute top-0 right-0 p-3 opacity-30 hover:opacity-100 cursor-pointer text-slate-500 hover:text-red-400 text-[10px] uppercase font-bold tracking-wider transition-colors flex items-center gap-1" onClick={() => {
-                 removeBiometrics(vaultId);
-                 setHasBiometrics(false);
-                 notify("Biometric credentials cleared from this device.", "info");
-               }}>
-                 <Trash2 className="h-3 w-3" /> Clear Link
-               </div>
-               <div className="flex items-center gap-4">
-                 <div className="w-12 h-12 bg-indigo-600/10 border border-indigo-500/30 rounded-full flex items-center justify-center shrink-0">
-                   <Fingerprint className="text-indigo-400 h-6 w-6 animate-pulse" />
-                 </div>
-                 <div className="flex-1 min-w-0">
-                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">Hardware Key Linked</h4>
-                   <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-tighter">Biometric recognition (Touch ID / Face ID) is active on this device.</p>
-                 </div>
-               </div>
-               <button
-                 type="button"
-                 disabled={loading}
-                 onClick={handleBiometricUnlock}
-                 className="w-full mt-4 py-3.5 bg-indigo-500/20 border border-indigo-500/30 hover:bg-indigo-500 hover:text-white text-indigo-300 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 text-xs uppercase tracking-widest shadow-lg shadow-indigo-950 disabled:opacity-50 disabled:cursor-not-allowed"
-               >
-                 <Fingerprint className="h-4 w-4" />
-                 {loading ? "Authenticating..." : "Scan Biometric Device"}
-               </button>
-               {isSandbox && isIframe && (
-                 <p className="text-[10px] text-amber-500 font-mono mt-2 uppercase text-center border border-amber-500/20 bg-amber-500/10 rounded-md p-2">
-                   Hardware Biometrics may be blocked inside sandbox iframes. Escape iframe for full support.
-                 </p>
-               )}
-               {biometricError && (
-                 <p className="text-[9px] text-red-400 font-mono mt-2 uppercase text-center">{biometricError}</p>
-               )}
-               <div className="mt-4 flex items-center justify-center gap-2">
-                 <div className="h-px flex-1 bg-slate-800" />
-                 <span className="text-[8px] font-mono uppercase tracking-[0.2em] text-slate-600 font-bold">OR SECURE ENTROPY SEQUENCE BACKUP</span>
-                 <div className="h-px flex-1 bg-slate-800" />
-               </div>
-             </div>
-          )}
-          
-          <div className="mb-8">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">
-              <Shield className="h-3 w-3" />
-              Stage {stage} of 3 • Attempt {attempt + 1}/3
-            </div>
-            <div className="flex gap-2 mb-6">
-              {[1, 2, 3].map(i => (
-                <div key={i} className={cn("h-1.5 flex-1 rounded-full transition-all duration-500", stage >= i ? "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" : "bg-slate-800")} />
-              ))}
-            </div>
-            <h2 className="text-xl font-bold text-white uppercase">
-              {stage === 1 ? 'Stage Alpha: Core Identity' : stage === 2 ? 'Stage Beta: Environmental Verification' : 'Stage Omega: Final Synthesis'}
-            </h2>
-            <p className="text-sm text-slate-400 mt-2">Provide the required entropy bits to derive your AES-256 session key.</p>
-          </div>
+          {hasBiometrics && !showQuestionsFallback ? (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-indigo-600/10 border border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-indigo-950">
+                  <Fingerprint className="text-indigo-400 h-8 w-8 animate-pulse" />
+                </div>
+                <h2 className="text-lg font-black text-white uppercase tracking-tight">Mandatory Biometric Verification</h2>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+                  This vault is locked with device biometrics (Touch ID, Face ID, or YubiKey). Scan your registered hardware key to unlock.
+                </p>
+              </div>
 
-          <div className="space-y-8">
-            {indices.map((idx) => {
-              const isVisible = !!visibleAnswers[idx];
-              return (
-                <div key={idx} className="space-y-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{SECURITY_QUESTIONS[idx]}</p>
-                  <div className="relative">
-                    <input 
-                      type={isVisible ? "text" : "password"}
-                      value={allAnswers[idx] || ''}
-                      onChange={(e) => setAllAnswers({ ...allAnswers, [idx]: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-12 py-4 text-sm focus:border-indigo-500 outline-none transition-all font-mono text-white placeholder:text-slate-800"
-                      placeholder="Declare value..."
-                      autoFocus={Array.isArray(indices) && indices.length > 0 && indices[0] === idx}
-                      autoComplete="off"
-                    />
+              {/* Hardware Detection & Sandbox Message Box */}
+              <div className="p-4 bg-slate-950/90 border border-slate-800 rounded-2xl space-y-3 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Hardware Security Status</span>
+                  <span className="text-[9px] font-mono text-indigo-400 font-black uppercase bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded">
+                    WebAuthn Hardware Protocol
+                  </span>
+                </div>
+
+                {(authStatus?.isIframe || isIframe) && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 text-xs">
+                    <div className="flex items-center gap-2 text-amber-400 font-bold uppercase font-mono">
+                      <TriangleAlert className="h-4 w-4 shrink-0" />
+                      <span>Iframe Hardware Protection Active</span>
+                    </div>
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      Touch ID, Face ID, or YubiKey hardware cannot be directly triggered inside this embedded preview frame due to browser iframe security policies.
+                    </p>
                     <button
                       type="button"
-                      onClick={() => setVisibleAnswers({ ...visibleAnswers, [idx]: !isVisible })}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-indigo-400 transition-colors"
+                      onClick={() => {
+                        const cleanUrl = getCleanPreviewUrl();
+                        window.open(cleanUrl, '_blank');
+                      }}
+                      className="w-full bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 text-amber-300 border border-amber-500/30 font-bold py-2 px-3 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                     >
-                      {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open in New Tab for Real Touch ID / Face ID
                     </button>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                )}
 
-          <button 
-            disabled={loading}
-            onClick={handleNextStage}
-            className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-indigo-500 transition-all active:scale-95 shadow-lg shadow-indigo-900/40 disabled:opacity-50 uppercase tracking-widest text-xs"
-          >
-            {loading ? 'Synthesizing...' : stage === 3 ? 'Execute Final Decryption' : 'Submit Entropy & Progress'}
-          </button>
+                {!authStatus?.isIframe && authStatus?.platformAvailable && (
+                  <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl flex items-center gap-3 text-emerald-400 text-xs font-bold font-mono uppercase">
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+                    <span>Native Hardware Authenticator Detected (Touch ID / Face ID / YubiKey)</span>
+                  </div>
+                )}
+
+                {!authStatus?.isIframe && !authStatus?.platformAvailable && (
+                  <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1 text-xs">
+                    <span className="text-slate-300 font-bold font-mono uppercase block">Hardware Not Detected / Defaulting to Simulation</span>
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      No attached platform authenticator detected on this browser session. Ensure Touch ID / Face ID is configured in settings or insert a physical YubiKey.
+                    </p>
+                  </div>
+                )}
+
+                {biometricError && (
+                  <div className="p-3 bg-red-950/40 border border-red-500/30 rounded-xl text-red-300 text-xs font-mono leading-relaxed">
+                    <strong>Verification Error:</strong> {biometricError}
+                  </div>
+                )}
+              </div>
+
+              {/* Primary Biometric Unlock Button */}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleBiometricUnlock}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-indigo-950 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Fingerprint className="h-5 w-5" />
+                {loading ? "Authenticating Hardware Key..." : "Scan Touch ID / Face ID / YubiKey"}
+              </button>
+
+              {/* Secondary Options */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowQuestionsFallback(true)}
+                  className="text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider text-[10px] transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  Use Security Questions Fallback →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeBiometrics(vaultId);
+                    setHasBiometrics(false);
+                    notify("Biometric link cleared from device.", "info");
+                  }}
+                  className="text-slate-500 hover:text-red-400 font-bold uppercase tracking-wider text-[10px] transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Unlink Device
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {hasBiometrics && showQuestionsFallback && (
+                <div className="mb-6 p-3 bg-indigo-950/50 border border-indigo-800/50 rounded-xl flex items-center justify-between">
+                  <span className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider font-mono">
+                    Security Questions Fallback Active
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuestionsFallback(false)}
+                    className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    ← Return to Biometric Prompt
+                  </button>
+                </div>
+              )}
+
+              <div className="mb-8">
+                <div className="flex items-center gap-2 text-indigo-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">
+                  <Shield className="h-3 w-3" />
+                  Stage {stage} of 3 • Attempt {attempt + 1}/3
+                </div>
+                <div className="flex gap-2 mb-6">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className={cn("h-1.5 flex-1 rounded-full transition-all duration-500", stage >= i ? "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" : "bg-slate-800")} />
+                  ))}
+                </div>
+                <h2 className="text-xl font-bold text-white uppercase">
+                  {stage === 1 ? 'Stage Alpha: Core Identity' : stage === 2 ? 'Stage Beta: Environmental Verification' : 'Stage Omega: Final Synthesis'}
+                </h2>
+                <p className="text-sm text-slate-400 mt-2">Provide the required entropy bits to derive your AES-256 session key.</p>
+              </div>
+
+              <div className="space-y-8">
+                {indices.map((idx) => {
+                  const isVisible = !!visibleAnswers[idx];
+                  return (
+                    <div key={idx} className="space-y-3">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{SECURITY_QUESTIONS[idx]}</p>
+                      <div className="relative">
+                        <input 
+                          type={isVisible ? "text" : "password"}
+                          value={allAnswers[idx] || ''}
+                          onChange={(e) => setAllAnswers({ ...allAnswers, [idx]: e.target.value })}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-12 py-4 text-sm focus:border-indigo-500 outline-none transition-all font-mono text-white placeholder:text-slate-800"
+                          placeholder="Declare value..."
+                          autoFocus={Array.isArray(indices) && indices.length > 0 && indices[0] === idx}
+                          autoComplete="off"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setVisibleAnswers({ ...visibleAnswers, [idx]: !isVisible })}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-indigo-400 transition-colors"
+                        >
+                          {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button 
+                disabled={loading}
+                onClick={handleNextStage}
+                className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-indigo-500 transition-all active:scale-95 shadow-lg shadow-indigo-900/40 disabled:opacity-50 uppercase tracking-widest text-xs cursor-pointer"
+              >
+                {loading ? 'Synthesizing...' : stage === 3 ? 'Execute Final Decryption' : 'Submit Entropy & Progress'}
+              </button>
+            </>
+          )}
 
           <div className="mt-6 pt-4 border-t border-slate-800/60 flex flex-col gap-3">
             <button 
@@ -6285,14 +6370,14 @@ function SettingsModal({
   const isPrimaryOwner = userId === vaultId || userId === vaultConfig.ownerId;
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
   const isSandbox = getIsSandbox();
+  const [authStatus, setAuthStatus] = useState<AuthenticatorStatus | null>(null);
 
   useEffect(() => {
     async function check() {
-      const supported = await checkBiometricSupport();
-      setIsSupported(supported);
-      if (supported) {
-        setIsRegistered(isBiometricRegistered(vaultId));
-      }
+      setIsRegistered(isBiometricRegistered(vaultId));
+      const status = await checkPlatformAuthenticatorStatus();
+      setAuthStatus(status);
+      setIsSupported(status.isSupported);
     }
     check();
   }, [vaultId]);
@@ -6831,64 +6916,81 @@ function SettingsModal({
               Once linked, you can bypass the stage-by-stage security questions for subsequent log-ins.
             </p>
 
-            <div className="p-5 rounded-2xl border bg-slate-950 mb-8 border-slate-800">
-               <span className="block text-[9px] font-bold text-slate-600 uppercase mb-2 tracking-wider">Device Hardware Status</span>
-               {isSupported === null ? (
-                 <div className="text-xs font-mono text-slate-500 uppercase">Checking compatibility...</div>
-               ) : isSupported === false ? (
-                 <div className="flex items-center gap-2 text-red-500 text-xs font-bold uppercase">
-                   <X className="h-4 w-4" /> WebAuthn Unsupported on this device
-                 </div>
-               ) : (
-                 <div className="space-y-4">
-                   <div className="flex items-center justify-between">
-                     <span className="text-xs text-slate-400 font-medium">Biometric hardware:</span>
-                     <span className="text-xs font-mono text-emerald-500 font-bold uppercase tracking-wider bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Operational</span>
-                   </div>
-                   <div className="flex items-center justify-between border-t border-slate-900 pt-3">
-                     <span className="text-xs text-slate-400 font-medium">Device Link Status:</span>
-                     {isRegistered ? (
-                       <span className="text-xs font-mono text-indigo-400 font-bold uppercase tracking-wider bg-indigo-500/15 px-2 py-0.5 rounded border border-indigo-500/20 flex items-center gap-1 animate-fadeIn">
-                         <ShieldCheck className="h-3 w-3" /> Enabled
-                       </span>
-                     ) : (
-                       <span className="text-xs font-mono text-slate-500 font-bold uppercase tracking-wider bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
-                         Disabled
-                       </span>
-                     )}
-                   </div>
-                 </div>
-               )}
-            </div>
-
-            {isSupported && (
-              <div className="flex flex-col gap-4">
-                <div className="flex gap-4">
-                  {isRegistered ? (
-                    <button
-                      disabled={loading}
-                      onClick={handleRemove}
-                      className="w-full py-4 bg-red-950/40 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-900 hover:text-white transition-all text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? "Processing..." : "Unlink Biometrics"}
-                    </button>
-                  ) : (
-                    <button
-                      disabled={loading}
-                      onClick={handleRegister}
-                      className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all text-xs uppercase tracking-widest shadow-lg shadow-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {loading ? "Registering with Hardware Key..." : "Link This Device (Hardware Biometrics)"}
-                    </button>
-                  )}
-                </div>
-                {isSandbox && isIframe && (
-                  <p className="text-[10px] text-amber-500 font-mono uppercase text-center border border-amber-500/20 bg-amber-500/10 rounded-md p-2">
-                    Hardware Biometrics may be blocked inside sandbox iframes. Escape iframe for full support.
+            <div className="p-5 rounded-2xl border bg-slate-950 mb-6 border-slate-800 space-y-4">
+              <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider">Device Hardware & Authenticator Status</span>
+              
+              {(authStatus?.isIframe || isIframe) && (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase font-mono">
+                    <TriangleAlert className="h-4 w-4 shrink-0" />
+                    <span>Embedded Iframe Restricted</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Browser security policies restrict direct Touch ID, Face ID, or YubiKey hardware access inside embedded preview iframes, defaulting to hardware simulation mode.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cleanUrl = getCleanPreviewUrl();
+                      window.open(cleanUrl, '_blank');
+                    }}
+                    className="w-full mt-1 bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 text-amber-300 border border-amber-500/30 font-bold py-2 px-3 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open in New Tab for Real Hardware Touch ID / Face ID
+                  </button>
+                </div>
+              )}
+
+              {!authStatus?.isIframe && authStatus?.platformAvailable && (
+                <div className="flex items-center justify-between text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl font-bold uppercase">
+                  <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Touch ID / Face ID / YubiKey Hardware Detected</span>
+                  <span>Operational</span>
+                </div>
+              )}
+
+              {!authStatus?.isIframe && !authStatus?.platformAvailable && (
+                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl space-y-1">
+                  <span className="text-xs font-mono text-slate-300 font-bold uppercase block">No Platform Authenticator Detected</span>
+                  <p className="text-[10px] text-slate-500">Ensure Touch ID / Face ID is active on your device or attach a physical YubiKey token.</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between border-t border-slate-900 pt-3">
+                <span className="text-xs text-slate-400 font-medium">Device Link Status:</span>
+                {isRegistered ? (
+                  <span className="text-xs font-mono text-indigo-400 font-bold uppercase tracking-wider bg-indigo-500/15 px-2.5 py-1 rounded border border-indigo-500/20 flex items-center gap-1 animate-fadeIn">
+                    <ShieldCheck className="h-3.5 w-3.5" /> Registered & Forced
+                  </span>
+                ) : (
+                  <span className="text-xs font-mono text-slate-500 font-bold uppercase tracking-wider bg-slate-800 px-2.5 py-1 rounded border border-slate-700">
+                    Not Registered
+                  </span>
                 )}
               </div>
-            )}
+            </div>
+
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-4">
+                {isRegistered ? (
+                  <button
+                    disabled={loading}
+                    onClick={handleRemove}
+                    className="w-full py-4 bg-red-950/40 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-900 hover:text-white transition-all text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {loading ? "Processing..." : "Unlink Device Biometrics"}
+                  </button>
+                ) : (
+                  <button
+                    disabled={loading}
+                    onClick={handleRegister}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all text-xs uppercase tracking-widest shadow-lg shadow-indigo-900/40 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    {loading ? "Registering Hardware Key..." : "Link This Device (Hardware Biometrics)"}
+                  </button>
+                )}
+              </div>
+            </div>
 
             {/* Session Timeout Configuration */}
             <div className="p-5 rounded-2xl border bg-slate-950 mt-6 border-slate-800 animate-fadeIn">

@@ -12,6 +12,54 @@ export interface BiometricStatus {
   credentialId?: string;
 }
 
+export interface AuthenticatorStatus {
+  isSupported: boolean;
+  platformAvailable: boolean;
+  isIframe: boolean;
+  message: string;
+}
+
+/**
+ * Check detailed platform authenticator status including Touch ID, Face ID, YubiKey detection & iframe constraints.
+ */
+export async function checkPlatformAuthenticatorStatus(): Promise<AuthenticatorStatus> {
+  const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+  if (!window.PublicKeyCredential) {
+    return {
+      isSupported: false,
+      platformAvailable: false,
+      isIframe,
+      message: "Browser does not support the WebAuthn (PublicKeyCredential) standard."
+    };
+  }
+  try {
+    const available = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if (isIframe) {
+      return {
+        isSupported: true,
+        platformAvailable: !!available,
+        isIframe: true,
+        message: "Hardware biometrics (Touch ID / Face ID / YubiKey) cannot be directly triggered inside an embedded preview iframe. Open in a new tab for native hardware access."
+      };
+    }
+    return {
+      isSupported: true,
+      platformAvailable: !!available,
+      isIframe: false,
+      message: available
+        ? "Platform authenticator (Touch ID / Face ID / YubiKey) hardware detected and attached."
+        : "No attached platform authenticator (Touch ID, Face ID, or YubiKey) detected on this hardware."
+    };
+  } catch (e: any) {
+    return {
+      isSupported: false,
+      platformAvailable: false,
+      isIframe,
+      message: `Hardware detection error: ${e?.message || 'Access restricted'}. Please open in a new tab to use hardware biometrics.`
+    };
+  }
+}
+
 /**
  * Check if the browser supports WebAuthn and platform biometrics.
  */
