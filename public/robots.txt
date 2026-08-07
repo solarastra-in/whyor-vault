@@ -1,0 +1,18 @@
+# WhyOr Vault Robots Configuration
+# Allows crawling of public marketing and documentation pages (e.g. /about, /features, /onboarding.html)
+# while maintaining privacy protection for private vault application routes.
+
+User-agent: *
+Allow: /about
+Allow: /features
+Allow: /onboarding.html
+Disallow: /app
+Disallow: /api/
+Disallow: /
+
+# Sitemap: https://vault.whyor.in/sitemap.xml
+# ^ left commented out on purpose: only public/sitemap.xml.template exists
+# right now, not a live sitemap.xml. Uncomment this line once the template
+# is renamed to sitemap.xml and populated with real public URLs — an active
+# Sitemap: line pointing at a file that doesn't exist, or that lists
+# disallowed routes, would itself be flagged by Search Console.

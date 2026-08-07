@@ -137,6 +137,96 @@ export function splitMasterKey(key: string): Shares {
   };
 }
 
+// ---------------------------------------------------------------------
+// Claims 3 & 17: Configurable (k, n) GF(2^8) Shamir Secret Sharing
+// ---------------------------------------------------------------------
+
+export interface KofNShare {
+  x: number;
+  k: number;
+  n: number;
+  data: Uint8Array;
+}
+
+function gfEvalPoly(coeffs: number[], x: number): number {
+  let result = 0;
+  for (let i = coeffs.length - 1; i >= 0; i--) {
+    result = gfMul(result, x) ^ coeffs[i];
+  }
+  return result;
+}
+
+export function splitSecretKofN(secret: string, k: number, n: number): KofNShare[] {
+  if (k < 2 || n < 2 || n > 10 || k > n) {
+    throw new Error('Invalid threshold parameters: require 2 <= k <= n <= 10 per Claim 17.');
+  }
+  const enc = new TextEncoder();
+  const secretBytes = enc.encode(secret);
+  const len = secretBytes.length;
+
+  const polysCoeffs: number[][] = [];
+  for (let i = 0; i < len; i++) {
+    const randomCoeffs = Array.from(crypto.getRandomValues(new Uint8Array(k - 1)));
+    polysCoeffs.push([secretBytes[i], ...randomCoeffs]);
+  }
+
+  const shares: KofNShare[] = [];
+  for (let x = 1; x <= n; x++) {
+    const data = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      data[i] = gfEvalPoly(polysCoeffs[i], x);
+    }
+    shares.push({ x, k, n, data });
+  }
+  return shares;
+}
+
+export function reconstructSecretKofN(shares: KofNShare[]): string {
+  if (shares.length === 0) throw new Error('No shares provided.');
+  const { k } = shares[0];
+  if (shares.length < k) {
+    throw new Error(`Insufficient shares: need ${k}, got ${shares.length}.`);
+  }
+  const useShares = shares.slice(0, k);
+  const len = useShares[0].data.length;
+  const reconstructed = new Uint8Array(len);
+
+  for (let byteIdx = 0; byteIdx < len; byteIdx++) {
+    let acc = 0;
+    for (let j = 0; j < useShares.length; j++) {
+      let li = 1;
+      for (let m = 0; m < useShares.length; m++) {
+        if (m === j) continue;
+        const num = useShares[m].x;
+        const den = useShares[m].x ^ useShares[j].x;
+        li = gfMul(li, gfMul(num, gfInv(den)));
+      }
+      acc ^= gfMul(useShares[j].data[byteIdx], li);
+    }
+    reconstructed[byteIdx] = acc;
+  }
+
+  return new TextDecoder().decode(reconstructed);
+}
+
+export async function encodeKofNShareForKeycard(share: KofNShare): Promise<string> {
+  const { encodeCrockfordBase32 } = await import('./localQr');
+  return `WHYOR-KN-${share.k}-${share.n}-${share.x}-${encodeCrockfordBase32(share.data)}`;
+}
+
+export async function decodeKofNShareFromKeycard(text: string): Promise<KofNShare> {
+  const { decodeCrockfordBase32 } = await import('./localQr');
+  const parts = text.trim().toUpperCase().split('-');
+  if (parts.length < 5 || parts[0] !== 'WHYOR' || parts[1] !== 'KN') {
+    throw new Error('Not a recognized k-of-n keycard string.');
+  }
+  const k = parseInt(parts[2], 10);
+  const n = parseInt(parts[3], 10);
+  const x = parseInt(parts[4], 10);
+  const dataStr = parts.slice(5).join('-');
+  return { k, n, x, data: decodeCrockfordBase32(dataStr) };
+}
+
 export function reconstructMasterKey(anyTwoShares: string[]): string {
   if (anyTwoShares.length < 2) {
     throw new Error("Reconstruction requires at least 2 shares.");

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEMPLATE — not a live sitemap.
+
+  This repo (whyor-vault) is an authenticated single-page app with no public,
+  indexable routes today (see index.html <meta name="robots"> and
+  public/robots.txt, both set to block indexing). A sitemap only has meaning
+  once real public URLs exist to list — indexing app/vault routes here would
+  be a privacy regression, not an SEO gain.
+
+  Use this file when a public marketing surface exists (e.g. a marketing
+  site at whyor.in, or new public routes added to this app):
+    1. Rename to sitemap.xml
+    2. Replace the <loc> entries below with real, live, indexable URLs only
+    3. Remove any noindex directive on those specific pages
+    4. Add a "Sitemap: https://<host>/sitemap.xml" line to robots.txt
+       (that Sitemap: line — not an HTML <link> tag — is what search
+       engines actually use to discover it)
+    5. Keep it in sync automatically (generate from the route registry)
+       rather than hand-maintaining it, per the SEO guide's sitemap guidance
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://example.com/</loc>
+    <lastmod>2026-08-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <!-- Add one <url> block per real public page. Do not include:
+       - authenticated app/vault routes
+       - per-user or per-partition dynamic links
+       - staging/preview/admin paths -->
+</urlset>

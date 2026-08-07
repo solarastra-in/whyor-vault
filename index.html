@@ -3,7 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WhyOr Vault</title>
+    <title>WhyOr Vault — Zero-Knowledge Family Vault for Wills, Deeds &amp; Digital Assets</title>
+    <meta name="description" content="WhyOr Vault is a zero-knowledge private estate vault built for cryptographic inheritance, granular heir access management, and dead man switch automation. Securely store and delegate access to deeds, wills, trusts, and digital assets." />
+    <link rel="canonical" href="https://vault.whyor.in/" />
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- Note: this <link> tag is NOT how search engines discover sitemaps —
+         Google reads sitemaps via a "Sitemap:" line in robots.txt (added
+         there, see public/robots.txt) or direct Search Console submission.
+         This tag is included only because it was explicitly requested; it
+         has no effect on crawling. It's also currently inert either way,
+         since robots.txt disallows all crawling of this app shell. -->
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+    <!-- This app is an authenticated single-page vault: everything past this shell is private,
+         per-user data. There is no public content for Google to rank, so the shell is
+         deliberately noindex'd rather than optimized for ranking. If/when a public marketing
+         page is split out (see SEO notes), that page — and only that page — should be
+         indexable with its own title/description/canonical and this noindex removed. -->
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="WhyOr Vault" />
+    <meta property="og:title" content="WhyOr Vault — Zero-Knowledge Private Estate Vault" />
+    <meta property="og:description" content="A zero-knowledge private estate vault providing cryptographic inheritance and granular heir access management for deeds, wills, trusts, and digital assets." />
+    <meta property="og:url" content="https://vault.whyor.in/" />
+    <meta property="og:image" content="https://vault.whyor.in/og-image.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="WhyOr Vault — Zero-Knowledge Private Estate Vault" />
+    <meta name="twitter:description" content="A zero-knowledge private estate vault providing cryptographic inheritance and granular heir access management for deeds, wills, trusts, and digital assets." />
+    <meta name="twitter:image" content="https://vault.whyor.in/og-image.png" />
+
+    <!-- Structured Data (JSON-LD) for Search Engine Understanding -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "WhyOr Vault",
+      "url": "https://vault.whyor.in/",
+      "description": "Zero-knowledge encrypted family vault for storing and securely delegating access to deeds, wills, trusts, insurance, and digital assets.",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "All modern browsers",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
+
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='25' fill='%230f172a'/%3E%3Cpath d='M50 22 L75 32 V55 C75 67 64 77 50 82 C36 77 25 67 25 55 V32 Z' fill='%236366f1'/%3E%3Ccircle cx='50' cy='48' r='10' fill='white'/%3E%3Crect x='46' y='48' width='8' height='14' fill='white'/%3E%3Ccircle cx='50' cy='48' r='4' fill='%230f172a'/%3E%3C/svg%3E" />
   </head>
   <body>
@@ -11,4 +57,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

@@ -397,6 +397,23 @@ import {
   removeBiometrics, 
   authenticateWithBiometrics 
 } from './lib/webauthn';
+import { generateLocalQrDataUrl } from './lib/localQr';
+
+/**
+ * SECURITY FIX: replaces <img src="https://api.qrserver.com/...?data=<plaintext key>">.
+ * Generates QR client-side without sending sensitive keys over the network.
+ */
+function LocalQrImage({ data, alt, colorHex, className }: { data: string; alt: string; colorHex?: string; className?: string }) {
+  const [dataUrl, setDataUrl] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!data) { setDataUrl(null); return; }
+    generateLocalQrDataUrl(data, colorHex).then((url) => { if (!cancelled) setDataUrl(url); });
+    return () => { cancelled = true; };
+  }, [data, colorHex]);
+  if (!dataUrl) return <div className={cn(className, 'animate-pulse bg-slate-800/50')} aria-label={alt} />;
+  return <img src={dataUrl} alt={alt} className={className} />;
+}
 
 // --- Types ---
 
@@ -650,6 +667,22 @@ interface VaultConfig {
   deadMansSwitchTriggered?: boolean; 
   deadMansSwitchWarningSent?: boolean;
   granularPermissions?: Record<string, 'spouse' | 'accountant' | 'doctor' | 'lawyer' | 'child' | 'full'>;
+
+  // --- Claim 1/12 two-tier KEK/DEK architecture (see src/lib/vaultKeys.ts) ---
+  kdfVersion?: number;
+  argonPbkdfSaltB64?: string;
+  wrappedDEK?: string;
+  wrappedDEKIv?: string;
+  webauthnPrfCredentialId?: string;
+  webauthnPrfSaltB64?: string;
+  usedPRFAtCreation?: boolean;
+
+  // --- Claim 9 decoy duress vault (see src/lib/duressVault.ts) ---
+  decoyDuressVault?: {
+    duressArgonPbkdfSaltB64: string;
+    duressWrappedDEK: string;
+    duressWrappedDEKIv: string;
+  };
 }
 
 // --- Main Component ---
@@ -3502,11 +3535,11 @@ SAFEKEEPING PROTOCOL:
                     <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-6 space-y-6">
                       <div className="flex flex-col md:flex-row items-center gap-6">
                         <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl shrink-0 shadow-inner flex items-center justify-center">
-                          <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(masterKey)}&size=150x150&color=99-102-241&bgcolor=15-23-42`}
+                          <LocalQrImage
+                            data={masterKey}
                             alt="Master Key QR"
+                            colorHex="#6366f1"
                             className="w-32 h-32 select-none"
-                            referrerPolicy="no-referrer"
                           />
                         </div>
                         <div className="space-y-4 flex-1 w-full">
@@ -3558,11 +3591,11 @@ SAFEKEEPING PROTOCOL:
                       <div className="bg-slate-950/40 border border-red-950/40 rounded-2xl p-6 space-y-6">
                         <div className="flex flex-col md:flex-row items-center gap-6">
                           <div className="bg-slate-950 p-4 border border-red-950/60 rounded-xl shrink-0 shadow-inner flex items-center justify-center">
-                            <img 
-                              src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(duressKey)}&size=150x150&color=239-68-68&bgcolor=15-23-42`}
+                            <LocalQrImage
+                              data={duressKey}
                               alt="Duress Key QR"
+                              colorHex="#ef4444"
                               className="w-32 h-32 select-none"
-                              referrerPolicy="no-referrer"
                             />
                           </div>
                           <div className="space-y-4 flex-1 w-full">
@@ -9049,6 +9082,17 @@ function EntryModal({
       const { key, iv } = await deriveAttachmentKeyAndIV(derivationEntropy, attach.contentHash, salt);
       const decryptedBuffer = await decryptAttachment(payload.encryptedPayload, key, iv);
       
+      // Re-verify content hash against the decrypted plaintext on download
+      const recomputedHash = await computeContentHash(decryptedBuffer);
+      if (recomputedHash !== attach.contentHash) {
+        const actor = auth.currentUser;
+        if (actor) {
+          await logVaultAction(vaultId, actor, "TAMPER_ALERT", AuditResourceType.ITEM, item?.id || null,
+            `Content hash mismatch on download for "${attach.name}": expected ${attach.contentHash}, got ${recomputedHash}.`);
+        }
+        throw new Error(`Integrity check failed: this file's content no longer matches its stored hash. It may be corrupted or tampered with. Download aborted.`);
+      }
+
       const blob = new Blob([decryptedBuffer], { type: attach.mimeType });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

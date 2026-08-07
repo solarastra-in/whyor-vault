@@ -360,3 +360,74 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
     throw new Error(err.message || "Failed to assert biometric identification.");
   }
 }
+
+/**
+ * Claim 1(d)/11: Obtain WebAuthn PRF extension output specifically for KEK derivation.
+ * Returns undefined if PRF is unsupported, triggering Claim 14 fallback.
+ */
+export async function getWebAuthnPRFOutputForNewCredential(
+  userEmail: string = 'user@whyor.io'
+): Promise<{ credentialId: string; prfOutput: ArrayBuffer; prfSalt: ArrayBuffer } | undefined> {
+  const isSupported = await checkBiometricSupport();
+  if (!isSupported) return undefined;
+
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const userId = crypto.getRandomValues(new Uint8Array(16));
+  const prfSalt = crypto.getRandomValues(new Uint8Array(32));
+
+  const creationOptions: CredentialCreationOptions = {
+    publicKey: {
+      challenge,
+      rp: { name: 'WhyOr Cryptographic Vault Engine', id: window.location.hostname },
+      user: { id: userId, name: userEmail, displayName: userEmail.split('@')[0] },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+      timeout: 60000,
+      attestation: 'none',
+      extensions: { prf: { eval: { first: prfSalt } } } as any,
+    },
+  };
+
+  try {
+    const credential = (await navigator.credentials.create(creationOptions)) as PublicKeyCredential;
+    if (!credential) return undefined;
+    const extResults = credential.getClientExtensionResults() as any;
+    const prfOutput = extResults?.prf?.results?.first;
+    if (!prfOutput) {
+      console.warn('Authenticator does not support PRF extension. Claim 1/11 fallback: Final KEK = Base KEK.');
+      return undefined;
+    }
+    return {
+      credentialId: arrayBufferToBase64Url(credential.rawId),
+      prfOutput,
+      prfSalt: prfSalt.buffer,
+    };
+  } catch (err) {
+    console.warn('PRF credential creation failed; falling back to passphrase-only KEK.', err);
+    return undefined;
+  }
+}
+
+export async function getWebAuthnPRFOutputForAssertion(
+  credentialId: string,
+  prfSalt: ArrayBuffer
+): Promise<ArrayBuffer | undefined> {
+  try {
+    const assertionOptions: CredentialRequestOptions = {
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ type: 'public-key', id: base64UrlToArrayBuffer(credentialId) }],
+        userVerification: 'required',
+        timeout: 60000,
+        extensions: { prf: { eval: { first: prfSalt } } } as any,
+      },
+    };
+    const assertion = (await navigator.credentials.get(assertionOptions)) as PublicKeyCredential;
+    if (!assertion) return undefined;
+    const extResults = assertion.getClientExtensionResults() as any;
+    return extResults?.prf?.results?.first ?? undefined;
+  } catch (err) {
+    console.warn('PRF assertion failed; falling back to passphrase-only KEK.', err);
+    return undefined;
+  }
+}
