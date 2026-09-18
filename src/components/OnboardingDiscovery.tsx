@@ -5,16 +5,19 @@ import {
   CreditCard, Landmark, HelpCircle, Eye, EyeOff, Activity, FileText, FolderOpen, 
   Heart, ClipboardList, Database, Sparkles, Home, Zap, Info, AlertTriangle, 
   Play, Smartphone, BookOpen, ExternalLink, Settings, Lightbulb, Users, Scale, 
-  Clock, CheckCircle, Mail, Skull, ShieldAlert, KeyRound, AlertCircle
+  Clock, CheckCircle, Mail, Skull, ShieldAlert, KeyRound, AlertCircle, Video
 } from 'lucide-react';
+import InteractiveVaultMovieStage, { MOVIE_STAGES } from './InteractiveVaultMovieStage';
 
 interface OnboardingDiscoveryProps {
   onNext: () => void;
   onLogout: () => void;
+  onReplayVaultAnimation?: () => void;
 }
 
-export default function OnboardingDiscovery({ onNext, onLogout }: OnboardingDiscoveryProps) {
+export default function OnboardingDiscovery({ onNext, onLogout, onReplayVaultAnimation }: OnboardingDiscoveryProps) {
   const [cur, setCur] = useState(0);
+  const [showMovieStudio, setShowMovieStudio] = useState(false);
   const TOTAL = 8;
 
   // Screen 2 States (Compartment Live Decrypt demo)
@@ -130,6 +133,20 @@ export default function OnboardingDiscovery({ onNext, onLogout }: OnboardingDisc
 
           <button
             type="button"
+            onClick={() => setShowMovieStudio(!showMovieStudio)}
+            className={`text-[10px] uppercase font-bold transition-all border px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer ${
+              showMovieStudio
+                ? 'bg-indigo-600 border-indigo-400 text-white shadow-md shadow-indigo-950'
+                : 'border-indigo-500/40 bg-indigo-950/40 text-indigo-300 hover:text-white hover:bg-indigo-900/60'
+            }`}
+            title="Toggle Interactive Vault Movie Simulator"
+          >
+            <Video className="h-3.5 w-3.5 text-indigo-400" />
+            <span>{showMovieStudio ? 'Exit Movie Studio' : '🎬 Vault Movie'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setCur(TOTAL - 1)}
             className="text-[10px] uppercase font-bold text-slate-400 hover:text-white transition-all border border-slate-800/80 hover:border-slate-700 bg-slate-950/40 px-3 py-1.5 rounded-lg"
           >
@@ -140,7 +157,32 @@ export default function OnboardingDiscovery({ onNext, onLogout }: OnboardingDisc
 
       {/* CORE FRAME FOR SCULLING CHUNKS */}
       <div className="min-h-[500px] flex flex-col justify-between">
-        
+        {showMovieStudio ? (
+          <div className="space-y-4 py-2 text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-indigo-950/30 border border-indigo-500/30 rounded-2xl">
+              <div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <Video className="h-4 w-4 text-indigo-400" />
+                  <span>Cinematic Vault Opening Engine</span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Simulate each mechanical stage of unlocking the multi-ton armored vault portal.
+                </p>
+              </div>
+              {onReplayVaultAnimation && (
+                <button
+                  type="button"
+                  onClick={onReplayVaultAnimation}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-950 border border-indigo-400/40 shrink-0"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>Launch Fullscreen Movie</span>
+                </button>
+              )}
+            </div>
+            <InteractiveVaultMovieStage onLaunchFullscreen={onReplayVaultAnimation} />
+          </div>
+        ) : (
         <AnimatePresence mode="wait">
           <motion.div
             key={cur}
@@ -217,52 +259,35 @@ export default function OnboardingDiscovery({ onNext, onLogout }: OnboardingDisc
                   </div>
                 </div>
 
-                <div className="lg:col-span-5 bg-slate-950/80 rounded-2xl border border-slate-850 p-6 flex flex-col items-center justify-center gap-6">
-                  {/* Dynamic Locking SVG */}
-                  <div className="relative w-40 h-40 flex items-center justify-center">
-                    <svg className="absolute inset-0 w-full h-full rotate-45" viewBox="0 0 100 100">
-                      <circle cx="50" cy="50" r="45" fill="none" stroke="#1e293b" strokeWidth="2" />
-                      <circle cx="50" cy="50" r="45" fill="none" stroke="#6366f1" strokeWidth="3" strokeDasharray="283" strokeDashoffset="60" strokeLinecap="round" className="animate-spin" style={{ animationDuration: '6s' }} />
-                      <circle cx="50" cy="50" r="35" fill="none" stroke="#111827" strokeWidth="6" />
-                      <circle cx="50" cy="50" r="35" fill="none" stroke="#14b8a6" strokeWidth="2" strokeDasharray="220" strokeDashoffset="120" strokeLinecap="round" className="animate-spin" style={{ animationDuration: '4s', animationDirection: 'reverse' }} />
-                    </svg>
-                    <div className="z-10 p-4 bg-slate-900/90 border border-indigo-500/30 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center">
-                      <Lock className="h-8 w-8 text-indigo-400 animate-pulse" />
-                      <span className="text-[8px] font-mono text-slate-500 uppercase tracking-widest mt-2 block">ENCRYPTED</span>
-                    </div>
+                <div className="lg:col-span-5 bg-slate-950/80 rounded-2xl border border-slate-850 p-4 sm:p-5 flex flex-col justify-between space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-indigo-400 tracking-wider font-bold flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Live Movie Vault Mechanism</span>
+                    </span>
+                    <span className="text-[9px] font-mono px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded">
+                      INTERACTIVE
+                    </span>
                   </div>
 
-                  <div className="text-center w-full space-y-4">
-                    <div>
-                      <h4 className="text-[10px] font-mono font-black text-indigo-400 uppercase tracking-widest">SYSTEM STATUS</h4>
-                      <div className="flex gap-1.5 justify-center flex-wrap mt-2">
-                        <span className="text-[9px] font-mono px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded-lg flex items-center gap-1">
-                          <Check className="h-2.5 w-2.5" /> AES-256-GCM
-                        </span>
-                        <span className="text-[9px] font-mono px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg">
-                          Client-side only
-                        </span>
-                        <span className="text-[9px] font-mono px-2 py-0.5 bg-teal-500/10 border border-teal-500/20 text-teal-400 font-bold rounded-lg">
-                          Zero-knowledge
-                        </span>
-                      </div>
-                    </div>
+                  {/* Embedded Interactive Vault Movie Simulation */}
+                  <InteractiveVaultMovieStage 
+                    currentStage={0}
+                    compact={true}
+                    onLaunchFullscreen={onReplayVaultAnimation}
+                  />
 
-                    <div className="space-y-1.5 text-xs text-slate-400 max-w-xs mx-auto">
-                      <div className="flex justify-between items-center bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-850">
-                        <span className="text-slate-500 text-[10px] uppercase font-mono">Everyday Assets</span>
-                        <div className="w-24 bg-slate-850 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-indigo-500 h-full rounded-full" style={{ width: '55%' }}></div>
-                        </div>
-                        <span className="font-mono text-[10px] font-bold text-white">55%</span>
-                      </div>
-                      <div className="flex justify-between items-center bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-850">
-                        <span className="text-slate-500 text-[10px] uppercase font-mono">Long-term Estate</span>
-                        <div className="w-24 bg-slate-850 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-teal-500 h-full rounded-full" style={{ width: '45%' }}></div>
-                        </div>
-                        <span className="font-mono text-[10px] font-bold text-white">45%</span>
-                      </div>
+                  <div className="text-center w-full space-y-3 pt-2 border-t border-slate-800/80">
+                    <div className="flex gap-1.5 justify-center flex-wrap">
+                      <span className="text-[9px] font-mono px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded-lg flex items-center gap-1">
+                        <Check className="h-2.5 w-2.5" /> AES-256-GCM
+                      </span>
+                      <span className="text-[9px] font-mono px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg">
+                        Client-side only
+                      </span>
+                      <span className="text-[9px] font-mono px-2 py-0.5 bg-teal-500/10 border border-teal-500/20 text-teal-400 font-bold rounded-lg">
+                        Zero-knowledge
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1036,32 +1061,46 @@ export default function OnboardingDiscovery({ onNext, onLogout }: OnboardingDisc
                   </div>
                 </div>
 
-                <div className="flex gap-3 justify-center pt-6 max-w-xs mx-auto">
-                  <button
-                    type="button"
-                    onClick={() => setCur(0)}
-                    className="flex-1 py-3 text-[10px] uppercase font-black tracking-widest border border-slate-800 hover:border-slate-700 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer"
-                  >
-                    🔄 Replay Guide
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onNext}
-                    className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[10px] tracking-widest rounded-xl transition-all shadow-lg hover:shadow-emerald-900/20 border border-emerald-500/20 flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
-                    id="onboarding-enter-vault-button"
-                  >
-                    <span>Enter Vault</span>
-                    <KeyRound className="h-3.5 w-3.5" />
-                  </button>
+                <div className="flex flex-col gap-3 pt-6 max-w-sm mx-auto">
+                  {onReplayVaultAnimation && (
+                    <button
+                      type="button"
+                      onClick={onReplayVaultAnimation}
+                      className="w-full py-3 bg-indigo-600/90 hover:bg-indigo-500 text-white font-black uppercase text-[10px] tracking-widest rounded-xl transition-all shadow-xl shadow-indigo-950/50 border border-indigo-400/40 flex items-center justify-center gap-2 cursor-pointer group"
+                    >
+                      <Lock className="h-3.5 w-3.5 text-indigo-300 group-hover:scale-110 transition-transform" />
+                      <span>🎬 Watch Movie Blast Door Opening</span>
+                    </button>
+                  )}
+                  
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCur(0)}
+                      className="flex-1 py-3 text-[10px] uppercase font-black tracking-widest border border-slate-800 hover:border-slate-700 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-white rounded-xl transition-all cursor-pointer"
+                    >
+                      🔄 Replay Guide
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onNext}
+                      className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-[10px] tracking-widest rounded-xl transition-all shadow-lg hover:shadow-emerald-900/20 border border-emerald-500/20 flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
+                      id="onboarding-enter-vault-button"
+                    >
+                      <span>Enter Vault</span>
+                      <KeyRound className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
             
           </motion.div>
         </AnimatePresence>
+        )}
 
         {/* BOTTOM STEPS CONTROL CODES */}
-        {cur < TOTAL - 1 && (
+        {!showMovieStudio && cur < TOTAL - 1 && (
           <div className="pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest shrink-0">

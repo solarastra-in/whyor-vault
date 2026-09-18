@@ -387,9 +387,19 @@ import AdminPanel from './components/AdminPanel';
 import { EntryModalContent } from './components/EntryModalContent';
 import PaywallModal from './components/PaywallModal';
 import OnboardingDiscovery from './components/OnboardingDiscovery';
-import { Coins, Wallet } from 'lucide-react';
+import MovieVaultOpening from './components/MovieVaultOpening';
+import CinematicVaultLanding from './components/CinematicVaultLanding';
+import CinematicQuestionExperience from './components/CinematicQuestionExperience';
+import CinematicVerificationChallenge from './components/CinematicVerificationChallenge';
+import VaultHealthWidget from './components/VaultHealthWidget';
+import AssetBadge, { getAssetTypeMeta, ASSET_TYPE_CONFIG } from './components/AssetBadge';
+import GuidedTour, { TourLauncherButton } from './components/GuidedTour';
+import { Tooltip, InfoTooltip, FieldLabel } from './components/Tooltip';
+import { Coins, Wallet, Flame, Sparkles } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/error-handler';
 import DatabaseStatus from './components/DatabaseStatus';
+import ErasureProtocolAnimation from './components/ErasureProtocolAnimation';
+import MasterKeyTransitionModal from './components/MasterKeyTransitionModal';
 import { 
   checkBiometricSupport, 
   checkPlatformAuthenticatorStatus,
@@ -748,6 +758,9 @@ export default function App() {
   const [vaultId, setVaultId] = useState<string | null>(null);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState<boolean | null>(null);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isMovieVaultOpeningOpen, setIsMovieVaultOpeningOpen] = useState(false);
+  const [isEnteringVault, setIsEnteringVault] = useState(false);
+  const [isGuidedTourOpen, setIsGuidedTourOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(false);
   
   const [systemConfig, setSystemConfig] = useState({
@@ -787,6 +800,21 @@ export default function App() {
   const INACTIVITY_LIMIT = idleTimeoutMins * 60 * 1000;
   const [remainingSecs, setRemainingSecs] = useState<number | null>(null);
   const [extendCount, setExtendCount] = useState<number>(0);
+
+  // --- CINEMATIC ANIMATIONS FOR SECONDARY PATHWAYS ---
+  const [erasureAnimation, setErasureAnimation] = useState<{
+    active: boolean;
+    isDryRun?: boolean;
+    title?: string;
+    subtitle?: string;
+    onComplete?: () => void;
+  } | null>(null);
+
+  const [masterKeyTransition, setMasterKeyTransition] = useState<{
+    isOpen: boolean;
+    sourceContext?: string;
+    targetAction?: () => void;
+  } | null>(null);
 
   const remainingSecsRef = useRef<number | null>(null);
   useEffect(() => {
@@ -925,6 +953,17 @@ export default function App() {
   useEffect(() => {
     const handleEmergencyPurge = async () => {
       if (!user) return;
+      // Trigger the animatic erasure sequence!
+      setErasureAnimation({
+        active: true,
+        isDryRun: false,
+        title: "EMERGENCY TOTAL ERASURE PROTOCOL",
+        subtitle: "Irrevocable Secondary Destruction Sequence Engaged • Zero-Entropy Sanitization Active",
+        onComplete: () => {
+          window.location.reload();
+        }
+      });
+
       setGlobalLoading(true);
       try {
         const targets = Array.from(new Set([user.uid, vaultId].filter(Boolean) as string[]));
@@ -991,7 +1030,6 @@ export default function App() {
         }
 
         notify("Emergency wipe complete. Session terminated.", 'success');
-        setTimeout(() => window.location.reload(), 2000);
       } catch (e) {
         console.error(e);
         notify("Wipe protocol failed. Check console.", 'error');
@@ -1000,8 +1038,37 @@ export default function App() {
       }
     };
 
+    const handleDryRunErasure = () => {
+      setErasureAnimation({
+        active: true,
+        isDryRun: true,
+        title: "DURESS REGRESSION SIMULATION",
+        subtitle: "Testing Multi-Pass Shredding and Enclave Reset Animation (Zero Data Erased)",
+        onComplete: () => {
+          setErasureAnimation(null);
+          notify("Erasure protocol simulation complete. Vault data remains 100% intact.", 'success');
+        }
+      });
+    };
+
+    const handlePreviewMasterKeyTransition = () => {
+      setMasterKeyTransition({
+        isOpen: true,
+        sourceContext: "Master Key Pathway Override",
+        targetAction: () => {
+          setMasterKeyTransition(null);
+        }
+      });
+    };
+
     window.addEventListener('emergency-purge', handleEmergencyPurge);
-    return () => window.removeEventListener('emergency-purge', handleEmergencyPurge);
+    window.addEventListener('test-erasure-dry-run', handleDryRunErasure);
+    window.addEventListener('preview-master-key-transition', handlePreviewMasterKeyTransition);
+    return () => {
+      window.removeEventListener('emergency-purge', handleEmergencyPurge);
+      window.removeEventListener('test-erasure-dry-run', handleDryRunErasure);
+      window.removeEventListener('preview-master-key-transition', handlePreviewMasterKeyTransition);
+    };
   }, [user, vaultId]);
 
   useEffect(() => {
@@ -1206,6 +1273,7 @@ export default function App() {
     fbSignInWithPopup(auth, provider)
       .then(() => {
         setLoginPending(false);
+        setIsEnteringVault(true);
       })
       .catch((e: any) => {
         if (e?.code === 'auth/cancelled-popup-request' || e?.code === 'auth/popup-closed-by-user') {
@@ -1242,6 +1310,21 @@ export default function App() {
     setIsLocked(true);
     setScreen('auth');
     setUser(null);
+    setIsEnteringVault(false);
+  };
+
+  const handleQuickLock = () => {
+    setActiveKey(null);
+    setActiveSignature(null);
+    setDecryptedEntries([]);
+    setIsLocked(true);
+    setScreen('verify');
+    window.dispatchEvent(new CustomEvent('app-notify', { 
+      detail: { 
+        message: 'Quick Lock engaged. Active cryptographic session key purged from memory.', 
+        type: 'info' 
+      } 
+    }));
   };
 
   if (loading) {
@@ -1268,11 +1351,14 @@ export default function App() {
           </motion.div>
         )}
 
-        {!user && screen === 'auth' && !loading && (
-          <AuthScreen 
-            key="auth-screen"
+        {((!user && screen === 'auth') || isEnteringVault) && !loading && (
+          <CinematicVaultLanding 
+            key="cinematic-vault-landing"
             onLogin={login} 
-            onSandboxLogin={triggerSandboxLogin}
+            onSandboxLogin={() => {
+              setIsEnteringVault(true);
+              triggerSandboxLogin();
+            }}
             onShowGuide={() => setIsHowItWorksOpen(true)}
             loginPending={loginPending}
             popupBlockedIndicator={popupBlockedIndicator}
@@ -1280,10 +1366,14 @@ export default function App() {
             onAdminClick={() => setScreen('admin_login')}
             theme={theme}
             onToggleTheme={toggleTheme}
+            isOpening={isEnteringVault}
+            onOpeningComplete={() => {
+              setIsEnteringVault(false);
+            }}
           />
         )}
 
-        {screen === 'admin_login' && (
+        {screen === 'admin_login' && !isEnteringVault && (
           <AdminLoginScreen 
             onLoginSuccess={() => setScreen('admin_dashboard')}
             onBackToCustomerLogin={() => {
@@ -1292,7 +1382,7 @@ export default function App() {
           />
         )}
 
-        {screen === 'admin_dashboard' && (
+        {screen === 'admin_dashboard' && !isEnteringVault && (
           <motion.div
             key="admin-dashboard-screen-wrapper"
             initial={{ opacity: 0 }}
@@ -1338,11 +1428,11 @@ export default function App() {
           </motion.div>
         )}
         
-        {user && hasAcceptedTerms === false && (
+        {user && hasAcceptedTerms === false && !isEnteringVault && (
           <TermsModal key="terms-modal" onAccept={handleAcceptTerms} onLogout={logout} />
         )}
 
-        {user && hasAcceptedTerms === true && (
+        {user && hasAcceptedTerms === true && !isEnteringVault && (
           <AnimatePresence mode="wait">
             {screen === 'setup' && (
               <motion.div
@@ -1371,6 +1461,7 @@ export default function App() {
                     setVaultId(user.uid);
                     setIsLocked(false);
                     setScreen('vault');
+                    setIsMovieVaultOpeningOpen(true);
                   }}
                 />
               </motion.div>
@@ -1397,9 +1488,17 @@ export default function App() {
                     if (signature) setActiveSignature(signature);
                     setIsLocked(false);
                     setScreen('vault');
+                    setIsMovieVaultOpeningOpen(true);
                   }}
-                  onCorrupt={() => setScreen('corrupted')}
+                  onCorrupt={(source?: string) => {
+                    setMasterKeyTransition({
+                      isOpen: true,
+                      sourceContext: typeof source === 'string' ? source : "Verification Challenge Secondary Fallback",
+                      targetAction: () => setScreen('corrupted')
+                    });
+                  }}
                   onLogout={logout}
+                  onStartGuidedTour={() => setIsGuidedTourOpen(true)}
                 />
               </motion.div>
             )}
@@ -1429,9 +1528,17 @@ export default function App() {
                     }
                     setIsLocked(false);
                     setScreen('vault');
+                    setIsMovieVaultOpeningOpen(true);
                   }}
                   onLogout={logout}
                   onFallbackToQA={() => setScreen('verify')}
+                  onReplayTransition={() => {
+                    setMasterKeyTransition({
+                      isOpen: true,
+                      sourceContext: "Master Key Recovery Enclave",
+                      targetAction: () => setMasterKeyTransition(null)
+                    });
+                  }}
                 />
               </motion.div>
             )}
@@ -1469,8 +1576,11 @@ export default function App() {
                     userEmail={user.email || 'anonymous@why-or-vault.com'}
                     vaultId={vaultId}
                     onLock={logout}
+                    onQuickLock={handleQuickLock}
                     config={vaultConfig}
                     onShowGuide={() => setIsHowItWorksOpen(true)}
+                    onReplayVaultAnimation={() => setIsMovieVaultOpeningOpen(true)}
+                    onStartGuidedTour={() => setIsGuidedTourOpen(true)}
                     idleTimeoutMins={idleTimeoutMins}
                     setIdleTimeoutMins={setIdleTimeoutMins}
                     remainingSecs={remainingSecs}
@@ -1553,6 +1663,104 @@ export default function App() {
       )}
 
       <SystemTroubleshooter />
+
+      {/* Cinematic Movie Vault Opening Animation Overlay */}
+      <MovieVaultOpening 
+        isOpen={isMovieVaultOpeningOpen}
+        onComplete={() => setIsMovieVaultOpeningOpen(false)}
+      />
+
+      {/* Emergency Total Erasure Protocol Animation Overlay */}
+      <ErasureProtocolAnimation
+        isActive={!!erasureAnimation?.active}
+        isDryRun={erasureAnimation?.isDryRun}
+        title={erasureAnimation?.title}
+        subtitle={erasureAnimation?.subtitle}
+        onComplete={() => {
+          if (erasureAnimation?.onComplete) {
+            erasureAnimation.onComplete();
+          } else {
+            setErasureAnimation(null);
+          }
+        }}
+        onCancel={() => setErasureAnimation(null)}
+      />
+
+      {/* Break-Glass Secondary Pathway Master Key Transition Modal */}
+      <MasterKeyTransitionModal
+        isOpen={!!masterKeyTransition?.isOpen}
+        sourceContext={masterKeyTransition?.sourceContext}
+        onComplete={() => {
+          const action = masterKeyTransition?.targetAction;
+          setMasterKeyTransition(null);
+          if (action) {
+            action();
+          } else {
+            setScreen('corrupted');
+          }
+        }}
+        onCancel={() => setMasterKeyTransition(null)}
+      />
+
+      {/* Comprehensive Guided Tour System */}
+      <GuidedTour 
+        isOpen={isGuidedTourOpen}
+        onClose={() => setIsGuidedTourOpen(false)}
+        currentScreen={screen as any}
+        onReplayVaultAnimation={() => {
+          setIsGuidedTourOpen(false);
+          setIsMovieVaultOpeningOpen(true);
+        }}
+      />
+
+      {/* Floating Guided Tour & Secondary Pathways Cinematic Bar */}
+      <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2 print:hidden flex-wrap max-w-[calc(100vw-2rem)]">
+        <TourLauncherButton onClick={() => setIsGuidedTourOpen(true)} label="Guided Tour" />
+        <button
+          type="button"
+          onClick={() => setIsMovieVaultOpeningOpen(true)}
+          className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 hover:border-indigo-400 text-indigo-300 hover:text-white px-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-black/40 backdrop-blur-md transition-all cursor-pointer"
+          title="Play Cinematic Movie Vault Opening Animation"
+        >
+          <Lock className="h-3.5 w-3.5 text-indigo-400 animate-pulse" />
+          <span className="hidden sm:inline">Movie Vault</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMasterKeyTransition({
+              isOpen: true,
+              sourceContext: "Master Key Override Preview",
+              targetAction: () => setMasterKeyTransition(null)
+            });
+          }}
+          className="bg-slate-900/80 hover:bg-slate-800 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white px-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-black/40 backdrop-blur-md transition-all cursor-pointer"
+          title="Play Master Key Secondary Override Animation"
+        >
+          <Key className="h-3.5 w-3.5 text-amber-400" />
+          <span className="hidden md:inline">Master Key</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setErasureAnimation({
+              active: true,
+              isDryRun: true,
+              title: "DURESS REGRESSION SIMULATION",
+              subtitle: "Testing Multi-Pass Shredding and Enclave Reset Animation (Zero Data Erased)",
+              onComplete: () => {
+                setErasureAnimation(null);
+                notify("Erasure protocol simulation complete. Vault data remains 100% intact.", 'success');
+              }
+            });
+          }}
+          className="bg-red-950/70 hover:bg-red-900 border border-red-500/40 hover:border-red-400 text-red-300 hover:text-white px-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-black/40 backdrop-blur-md transition-all cursor-pointer"
+          title="Preview Emergency Erasure Protocol Animation (Simulation)"
+        >
+          <Flame className="h-3.5 w-3.5 text-red-400 animate-pulse" />
+          <span className="hidden md:inline">Erasure Protocol</span>
+        </button>
+      </div>
 
       <footer className="fixed bottom-4 right-4 text-xs text-ink-muted pointer-events-none z-50">
         WhyOr Vault © {new Date().getFullYear()} WhyOr Vault
@@ -2129,6 +2337,7 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
   const [visibleAnswers, setVisibleAnswers] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [validation, setValidation] = useState<{ valid: boolean; errors: string[] }>({ valid: false, errors: [] });
+  const [isMovieVaultOpeningOpen, setIsMovieVaultOpeningOpen] = useState(false);
   
   // Shamir shares state
   const [shares, setShares] = useState<{ share1: string, share2: string, share3: string }>({ share1: '', share2: '', share3: '' });
@@ -2422,7 +2631,11 @@ SAFEKEEPING PROTOCOL:
          </div>
          <div className={cn("transition-all duration-300", step === 'intro' ? "p-6 md:p-8" : "p-12")}>
           {step === 'intro' && (
-            <OnboardingDiscovery onNext={() => setStep('master_key')} onLogout={onLogout} />
+            <OnboardingDiscovery 
+              onNext={() => setStep('master_key')} 
+              onLogout={onLogout} 
+              onReplayVaultAnimation={() => setIsMovieVaultOpeningOpen(true)}
+            />
           )}
           {step === 'intro_old_disabled' && (
             <div className="space-y-8 animate-fade-in text-left">
@@ -3982,64 +4195,33 @@ SAFEKEEPING PROTOCOL:
           )}
 
           {step === 'questions' && (
-            <div className="space-y-6">
-              <div className="sticky top-0 bg-slate-900 pb-4 z-10 border-b border-slate-800 mb-6">
-                <h3 className="text-white font-bold text-sm">Challenge Configuration</h3>
-                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Phase III: Security Redundancy</p>
-              </div>
-              
-              <div className="space-y-8 max-h-[40vh] overflow-y-auto px-2 custom-scrollbar">
-                {SECURITY_QUESTIONS.map((q, i) => {
-                  const isVisible = !!visibleAnswers[i];
-                  return (
-                    <div key={i} className="space-y-3">
-                      <label className="text-xs font-bold text-slate-400">{q}</label>
-                      <div className="relative">
-                        <input 
-                          type={isVisible ? "text" : "password"}
-                          value={answers[i]}
-                          onChange={(e) => {
-                            const newA = [...answers];
-                            newA[i] = e.target.value;
-                            setAnswers(newA);
-                          }}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-5 pr-12 py-4 text-sm text-white focus:border-indigo-500 outline-none transition-all font-mono"
-                          placeholder="Input answer..."
-                          autoComplete="off"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setVisibleAnswers({ ...visibleAnswers, [i]: !isVisible })}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-indigo-400 transition-colors"
-                        >
-                          {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex gap-4 pt-6">
-                <button onClick={() => setStep('master_key')} className="flex-1 py-4 bg-slate-800 text-slate-400 rounded-xl font-bold uppercase text-xs tracking-widest hover:text-white transition-all">Back</button>
-                <button 
-                  disabled={loading || answers.some(a => !a.trim())}
-                  onClick={handleCreateVault}
-                  className="flex-[2] py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 transition-all disabled:opacity-50 uppercase text-xs tracking-widest"
-                >
-                  {loading ? 'Committing to Cloud...' : 'Seal Vault Forever'}
-                </button>
-              </div>
-            </div>
+            <CinematicQuestionExperience 
+              answers={answers}
+              setAnswers={setAnswers}
+              visibleAnswers={visibleAnswers}
+              setVisibleAnswers={setVisibleAnswers}
+              loading={loading}
+              onSubmit={handleCreateVault}
+              onBack={() => setStep('master_key')}
+              title="Cryptographic Shard Synthesis"
+              subtitle="Phase III: Redundancy Configuration — Answer & Seal All 10 Shards"
+              submitLabel="Seal Vault & Commit Encrypted Enclave"
+            />
           )}
         </div>
       </div>
+
+      {/* Fullscreen Cinematic Movie Vault Opening */}
+      <MovieVaultOpening 
+        isOpen={isMovieVaultOpeningOpen}
+        onComplete={() => setIsMovieVaultOpeningOpen(false)}
+      />
     </motion.div>
   );
 }
 
 
-function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }: { config: VaultConfig, userId: string, vaultId: string, onUnlock: (key: CryptoKey, entries: DecryptedItem[], signature?: string) => void, onCorrupt: () => void, onLogout: () => void, key?: string }) {
+function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, onStartGuidedTour }: { config: VaultConfig, userId: string, vaultId: string, onUnlock: (key: CryptoKey, entries: DecryptedItem[], signature?: string) => void, onCorrupt: (source?: string) => void, onLogout: () => void, onStartGuidedTour?: () => void, key?: string }) {
   const [stage, setStage] = useState<1 | 2 | 3>(1);
   const [shuffledIndices, setShuffledIndices] = useState<number[]>([]);
   const [indices, setIndices] = useState<number[]>([]);
@@ -4318,14 +4500,19 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
       <div className="absolute inset-0 opacity-10 grid-bg" />
       
       <div className="w-full max-w-xl relative z-10">
-        <div className="flex items-center gap-3 mb-10 justify-center">
-          <div className="w-12 h-12 bg-indigo-600 rounded flex items-center justify-center border border-indigo-400 shadow-indigo">
-            <Lock className="text-white h-6 w-6" />
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-indigo-600 rounded flex items-center justify-center border border-indigo-400 shadow-indigo">
+              <Lock className="text-white h-6 w-6" />
+            </div>
+            <div className="text-left">
+              <h1 className="text-2xl font-black text-white uppercase tracking-tighter">WhyOr <span className="text-indigo-500">Vault</span></h1>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Protocol v2.5.0 • Entropy Progression</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-black text-white uppercase tracking-tighter">WhyOr <span className="text-indigo-500">Vault</span></h1>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Protocol v2.5.0 • Entropy Progression</p>
-          </div>
+          {onStartGuidedTour && (
+            <TourLauncherButton onClick={onStartGuidedTour} label="Guided Tour" />
+          )}
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
@@ -4448,69 +4635,28 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
                 </div>
               )}
 
-              <div className="mb-8">
-                <div className="flex items-center gap-2 text-indigo-400 font-bold text-[10px] uppercase tracking-[0.2em] mb-3">
-                  <Shield className="h-3 w-3" />
-                  Stage {stage} of 3 • Attempt {attempt + 1}/3
-                </div>
-                <div className="flex gap-2 mb-6">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className={cn("h-1.5 flex-1 rounded-full transition-all duration-500", stage >= i ? "bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" : "bg-slate-800")} />
-                  ))}
-                </div>
-                <h2 className="text-xl font-bold text-white uppercase">
-                  {stage === 1 ? 'Stage Alpha: Core Identity' : stage === 2 ? 'Stage Beta: Environmental Verification' : 'Stage Omega: Final Synthesis'}
-                </h2>
-                <p className="text-sm text-slate-400 mt-2">Provide the required entropy bits to derive your AES-256 session key.</p>
-              </div>
-
-              <div className="space-y-8">
-                {indices.map((idx) => {
-                  const isVisible = !!visibleAnswers[idx];
-                  return (
-                    <div key={idx} className="space-y-3">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{SECURITY_QUESTIONS[idx]}</p>
-                      <div className="relative">
-                        <input 
-                          type={isVisible ? "text" : "password"}
-                          value={allAnswers[idx] || ''}
-                          onChange={(e) => setAllAnswers({ ...allAnswers, [idx]: e.target.value })}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-12 py-4 text-sm focus:border-indigo-500 outline-none transition-all font-mono text-white placeholder:text-slate-800"
-                          placeholder="Declare value..."
-                          autoFocus={Array.isArray(indices) && indices.length > 0 && indices[0] === idx}
-                          autoComplete="off"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setVisibleAnswers({ ...visibleAnswers, [idx]: !isVisible })}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-indigo-400 transition-colors"
-                        >
-                          {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <button 
-                disabled={loading}
-                onClick={handleNextStage}
-                className="w-full mt-10 py-5 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-indigo-500 transition-all active:scale-95 shadow-lg shadow-indigo-900/40 disabled:opacity-50 uppercase tracking-widest text-xs cursor-pointer"
-              >
-                {loading ? 'Synthesizing...' : stage === 3 ? 'Execute Final Decryption' : 'Submit Entropy & Progress'}
-              </button>
+              <CinematicVerificationChallenge 
+                stage={stage}
+                attempt={attempt}
+                indices={indices}
+                allAnswers={allAnswers}
+                setAllAnswers={setAllAnswers}
+                visibleAnswers={visibleAnswers}
+                setVisibleAnswers={setVisibleAnswers}
+                loading={loading}
+                onNextStage={handleNextStage}
+              />
             </>
           )}
 
           <div className="mt-6 pt-4 border-t border-slate-800/60 flex flex-col gap-3">
             <button 
               type="button"
-              onClick={onCorrupt}
-              className="w-full py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+              onClick={() => onCorrupt("Manual Override Request")}
+              className="w-full py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-xl text-[10px] font-mono font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 group cursor-pointer shadow-sm shadow-indigo-950/40"
             >
-              <Key className="h-3 w-3" />
-              Use Master Key / SSS Shares
+              <Key className="h-3.5 w-3.5 text-indigo-400 group-hover:rotate-45 transition-transform duration-300" />
+              <span>Engage Secondary Path • Master Key / SSS</span>
             </button>
 
             <button 
@@ -4527,7 +4673,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout }
   );
 }
 
-function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallbackToQA }: { config: VaultConfig, userId: string, vaultId: string, onRecover: (key: CryptoKey, entries: DecryptedItem[], signature?: string, answers?: string[]) => void, onLogout: () => void, onFallbackToQA: () => void, key?: string }) {
+function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallbackToQA, onReplayTransition }: { config: VaultConfig, userId: string, vaultId: string, onRecover: (key: CryptoKey, entries: DecryptedItem[], signature?: string, answers?: string[]) => void, onLogout: () => void, onFallbackToQA: () => void, onReplayTransition?: () => void, key?: string }) {
   const [authMode, setAuthMode] = useState<'master_key' | 'sss'>('master_key');
   const [masterKey, setMasterKey] = useState('');
   const [share1, setShare1] = useState('');
@@ -4713,13 +4859,30 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
       <div className="absolute inset-0 opacity-10 grid-bg" />
       
       <div className="w-full max-w-sm text-center relative z-10">
-        <div className="w-20 h-20 bg-slate-900 border-2 border-red-800/80 rounded-full flex items-center justify-center mx-auto mb-8 shadow-2xl animate-pulse">
+        <div className="w-20 h-20 bg-slate-900 border-2 border-red-800/80 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl animate-pulse">
           <TriangleAlert className="text-red-500 h-8 w-8" />
         </div>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-950/70 border border-red-500/40 text-red-400 font-mono text-[9px] font-bold uppercase tracking-widest mb-2">
+          <Key className="h-3 w-3 text-amber-400" />
+          <span>Secondary Pathway Enclave</span>
+        </div>
         <h1 className="text-2xl font-black mb-1 text-white uppercase tracking-tight">Security Lockout Protocol</h1>
-        <p className="text-xs text-red-500 font-bold tracking-widest mb-10 uppercase">
+        <p className="text-xs text-red-500 font-bold tracking-widest mb-3 uppercase">
           🚨 CRITICAL AUTONOMOUS PROTECTION DEPLOYED 🚨
         </p>
+
+        {onReplayTransition && (
+          <div className="mb-6 flex justify-center">
+            <button
+              type="button"
+              onClick={onReplayTransition}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-indigo-500/40 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-indigo-950/40 hover:scale-[1.02] active:scale-95"
+            >
+              <Sparkles className="h-3 w-3 text-cyan-400" />
+              <span>Replay Break-Glass Sequence</span>
+            </button>
+          </div>
+        )}
 
         <div className={cn(
           "bg-slate-900 border p-8 rounded-2xl shadow-3xl transition-all relative overflow-hidden",
@@ -4903,8 +5066,11 @@ function VaultMain({
   userEmail, 
   vaultId, 
   onLock, 
+  onQuickLock,
   config: vaultConfig, 
   onShowGuide, 
+  onReplayVaultAnimation,
+  onStartGuidedTour,
   combinedSignature,
   idleTimeoutMins,
   setIdleTimeoutMins,
@@ -4924,8 +5090,11 @@ function VaultMain({
   userEmail: string, 
   vaultId: string, 
   onLock: () => void, 
+  onQuickLock?: () => void,
   config: VaultConfig, 
   onShowGuide: () => void, 
+  onReplayVaultAnimation?: () => void,
+  onStartGuidedTour?: () => void,
   combinedSignature: string | null,
   idleTimeoutMins: number,
   setIdleTimeoutMins: (val: number) => void,
@@ -5328,6 +5497,17 @@ function VaultMain({
             </div>
           </div>
           
+          {onQuickLock && (
+            <button 
+              onClick={onQuickLock}
+              className="w-full mb-2 py-2.5 flex items-center justify-center gap-2 text-[10px] font-bold text-rose-400 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-500/30 hover:border-rose-500/50 uppercase tracking-widest hover:text-white rounded-apex transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Quick Lock: Purge encryption session key"
+            >
+              <Lock className="h-3.5 w-3.5 text-rose-400" />
+              Quick Lock Session
+            </button>
+          )}
+
           <button 
             onClick={onLock}
             className="w-full py-3 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:bg-slate-800 hover:text-red-400 rounded-apex transition-all border border-transparent hover:border-red-500/20"
@@ -5361,6 +5541,17 @@ function VaultMain({
           </div>
           
           <div className="flex items-center gap-2">
+            {onQuickLock && (
+              <button
+                type="button"
+                onClick={onQuickLock}
+                className="px-2.5 py-1.5 bg-rose-950/60 border border-rose-500/40 text-rose-300 hover:text-white rounded-xl flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase transition-all cursor-pointer active:scale-95 shadow-sm"
+                title="Quick Lock: Purge active session key and challenge verification"
+              >
+                <Lock className="h-3.5 w-3.5 text-rose-400" />
+                <span>Quick Lock</span>
+              </button>
+            )}
             {remainingSecs !== null && (
               <span className={cn(
                 "font-mono text-[10px] font-bold px-2 py-1 rounded-lg border",
@@ -5637,53 +5828,101 @@ function VaultMain({
           </div>
           
           <div className="flex items-center gap-3 shrink-0">
-            {onToggleTheme && (
-              <button
-                onClick={onToggleTheme}
-                className="p-3 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded-lg font-bold flex items-center justify-center transition-all cursor-pointer hover:border-slate-700 hover:bg-slate-800"
-                title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            {onQuickLock && (
+              <Tooltip 
+                content="Quick Lock: Immediately wipe the active encryption session key from memory and redirect to verification challenge." 
+                title="Quick Lock (Cryptographic Purge)"
               >
-                {theme === 'light' ? <Moon className="h-4.5 w-4.5" /> : <Sun className="h-4.5 w-4.5" />}
-              </button>
+                <button
+                  type="button"
+                  onClick={onQuickLock}
+                  className="px-3.5 py-3 bg-rose-950/60 hover:bg-rose-900/90 border border-rose-500/50 hover:border-rose-400 text-rose-300 hover:text-white rounded-lg font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-rose-950/50 whitespace-nowrap active:scale-95 group"
+                  title="Quick Lock Vault"
+                  id="vault-header-quick-lock-btn"
+                >
+                  <Lock className="h-4 w-4 text-rose-400 group-hover:rotate-12 transition-transform" />
+                  <span className="text-xs uppercase tracking-wider font-mono font-bold">Quick Lock</span>
+                </button>
+              </Tooltip>
+            )}
+
+            {onToggleTheme && (
+              <Tooltip content={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'} title="Theme Selector">
+                <button
+                  onClick={onToggleTheme}
+                  className="p-3 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white rounded-lg font-bold flex items-center justify-center transition-all cursor-pointer hover:border-slate-700 hover:bg-slate-800"
+                  title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+                >
+                  {theme === 'light' ? <Moon className="h-4.5 w-4.5" /> : <Sun className="h-4.5 w-4.5" />}
+                </button>
+              </Tooltip>
+            )}
+
+            {onReplayVaultAnimation && (
+              <Tooltip content="Play the cinematic, movie-grade mechanical vault opening sequence." title="Vault Opening Sequence">
+                <button
+                  type="button"
+                  onClick={onReplayVaultAnimation}
+                  className="px-3.5 py-3 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 hover:border-indigo-400 text-indigo-300 hover:text-white rounded-lg font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-950/40 whitespace-nowrap"
+                  title="Play Movie Vault Animation"
+                >
+                  <Lock className="h-4 w-4 text-indigo-400 animate-pulse" />
+                  <span className="text-xs uppercase tracking-wider hidden md:inline">Vault Animation</span>
+                </button>
+              </Tooltip>
+            )}
+
+            {onStartGuidedTour && (
+              <Tooltip content="Start the step-by-step guided tour explaining every screen, vault partition, and feature." title="Guided Tour">
+                <div>
+                  <TourLauncherButton onClick={onStartGuidedTour} label="Tour" />
+                </div>
+              </Tooltip>
             )}
 
             {filter !== 'admin' && (
-              <button 
-                 onClick={() => {
-                   const isPremium = vaultConfig?.isPremium === true;
-                   const limit = vaultConfig?.userCustomFreeLimit ?? systemConfig.freeLimit;
-                   if (!isPremium && items.length >= limit) {
-                     setIsPaywallModalOpen(true);
-                   } else {
-                     setEditingItem(null);
-                     setIsAddModalOpen(true);
-                   }
-                 }}
-                 className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/40 active:translate-y-0.5 whitespace-nowrap"
-              >
-                <Plus className="h-5 w-5" />
-                Declare Record
-              </button>
+              <Tooltip content="Add a new encrypted credential, bank record, document scan, or seed key." title="Declare Asset Record">
+                <button 
+                   onClick={() => {
+                     const isPremium = vaultConfig?.isPremium === true;
+                     const limit = vaultConfig?.userCustomFreeLimit ?? systemConfig.freeLimit;
+                     if (!isPremium && items.length >= limit) {
+                       setIsPaywallModalOpen(true);
+                     } else {
+                       setEditingItem(null);
+                       setIsAddModalOpen(true);
+                     }
+                   }}
+                   className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-900/40 active:translate-y-0.5 whitespace-nowrap"
+                >
+                  <Plus className="h-5 w-5" />
+                  Declare Record
+                </button>
+              </Tooltip>
             )}
             
             {filter !== 'admin' && (
               <div className="flex gap-4">
                 {isOwner && (
-                  <button 
-                    onClick={() => setIsShareModalOpen(true)}
-                    className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-white whitespace-nowrap"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Family Sharing
-                  </button>
+                  <Tooltip content="Grant partitioned decryption access to trustees, beneficiaries, or family members." title="Family Sharing & Partitions">
+                    <button 
+                      onClick={() => setIsShareModalOpen(true)}
+                      className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-white whitespace-nowrap"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Family Sharing
+                    </button>
+                  </Tooltip>
                 )}
-                <button 
-                  onClick={exportVault}
-                  className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-emerald-400 whitespace-nowrap"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Backup
-                </button>
+                <Tooltip content="Export an offline, encrypted, digitally signed JSON snapshot of your vault." title="Offline Encrypted Backup">
+                  <button 
+                    onClick={exportVault}
+                    className="bg-slate-900 border border-slate-800 text-slate-300 px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-slate-800 transition-all hover:text-emerald-400 whitespace-nowrap"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Backup
+                  </button>
+                </Tooltip>
               </div>
             )}
           </div>
@@ -5704,6 +5943,24 @@ function VaultMain({
 
             return (
               <div className="mb-8 space-y-6 animate-fadeIn" id="tour-legacy-dashboard">
+                {/* Vault Health & Asset Distribution D3 Widget */}
+                <VaultHealthWidget 
+                  items={items}
+                  vaultConfig={vaultConfig}
+                  onSelectCategory={(cat) => selectFilter(cat as any)}
+                  onDeclareRecord={() => {
+                    const isPremium = vaultConfig?.isPremium === true;
+                    const limit = vaultConfig?.userCustomFreeLimit ?? systemConfig.freeLimit;
+                    if (!isPremium && items.length >= limit) {
+                      setIsPaywallModalOpen(true);
+                    } else {
+                      setEditingItem(null);
+                      setIsAddModalOpen(true);
+                    }
+                  }}
+                  className="shadow-2xl"
+                />
+
                 {/* Bento Grid layout */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   
@@ -6019,35 +6276,99 @@ function VaultMain({
               </div>
             </div>
           ) : filteredItems.length > 0 ? (
-            <motion.div 
-              variants={vaultStaggerContainer}
-              initial="hidden"
-              animate="show"
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-            >
-              {filteredItems.map(item => (
-                <motion.div 
-                  key={item.id} 
-                  variants={vaultCardItemVariant}
-                  className="relative overflow-hidden rounded-apex-lg"
-                >
-                  {/* Decryption laser scan sweep */}
+            <div className="space-y-5">
+              {/* Visual Scanning Bar & Asset Type Badges */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl backdrop-blur-sm shadow-md">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+                    Vault Ledger:
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-slate-950 text-indigo-400 font-mono text-xs font-black border border-indigo-500/20">
+                    {filteredItems.length} {filteredItems.length === 1 ? 'Record' : 'Records'}
+                  </span>
+                  {filter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => selectFilter('all')}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold ml-1.5 underline cursor-pointer flex items-center gap-1"
+                    >
+                      Clear filter (Show all {items.length})
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Visual Scanning Category Filter Badges */}
+                <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => selectFilter('all')}
+                    className={cn(
+                      "px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-wider rounded-full border transition-all cursor-pointer",
+                      filter === 'all'
+                        ? "bg-indigo-600 text-white border-indigo-400 shadow-sm shadow-indigo-500/25 ring-1 ring-white/40"
+                        : "bg-slate-950/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700"
+                    )}
+                  >
+                    All Types ({items.length})
+                  </button>
+
+                  {Array.from(new Set<string>(items.map(i => (i.type || 'other') as string))).map((typeKey: string) => {
+                    const count = items.filter(i => (i.type || 'other') === typeKey).length;
+                    const isActive = filter === typeKey;
+                    return (
+                      <button
+                        key={typeKey}
+                        type="button"
+                        onClick={() => selectFilter(typeKey as any)}
+                        className="cursor-pointer transition-transform active:scale-95"
+                      >
+                        <AssetBadge
+                          type={typeKey}
+                          variant="pill"
+                          short
+                          className={cn(
+                            "cursor-pointer",
+                            isActive && "ring-2 ring-white ring-offset-2 ring-offset-slate-950 font-black shadow-md scale-105"
+                          )}
+                          title={`Click to filter vault by ${getAssetTypeMeta(typeKey).label} (${count})`}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <motion.div 
+                variants={vaultStaggerContainer}
+                initial="hidden"
+                animate="show"
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                {filteredItems.map(item => (
                   <motion.div 
-                    initial={{ top: "-100%" }}
-                    animate={{ top: "105%" }}
-                    transition={{ delay: 0.25, duration: 0.8, ease: "easeInOut" }}
-                    className="absolute inset-x-0 h-[2px] bg-indigo-500 opacity-80 z-30 pointer-events-none shadow-[0_0_8px_#6366f1,0_0_15px_#6366f1]"
-                  />
-                  <VaultCard 
-                    item={item as DecryptedItem} 
-                    vaultId={vaultId}
-                    userId={userId}
-                    encryptionKey={encryptionKey}
-                    onEdit={() => { setEditingItem(item); setIsAddModalOpen(true); }} 
-                  />
-                </motion.div>
-              ))}
-            </motion.div>
+                    key={item.id} 
+                    variants={vaultCardItemVariant}
+                    className="relative overflow-hidden rounded-apex-lg"
+                  >
+                    {/* Decryption laser scan sweep */}
+                    <motion.div 
+                      initial={{ top: "-100%" }}
+                      animate={{ top: "105%" }}
+                      transition={{ delay: 0.25, duration: 0.8, ease: "easeInOut" }}
+                      className="absolute inset-x-0 h-[2px] bg-indigo-500 opacity-80 z-30 pointer-events-none shadow-[0_0_8px_#6366f1,0_0_15px_#6366f1]"
+                    />
+                    <VaultCard 
+                      item={item as DecryptedItem} 
+                      vaultId={vaultId}
+                      userId={userId}
+                      encryptionKey={encryptionKey}
+                      onFilterType={(type) => selectFilter(type as any)}
+                      onEdit={() => { setEditingItem(item); setIsAddModalOpen(true); }} 
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            </div>
           ) : (
             <div className="text-center py-20 bg-slate-900/50 border border-dashed border-slate-800 rounded-xl">
                <div className="w-16 h-16 bg-slate-950 border border-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -6562,47 +6883,8 @@ function SettingsModal({
 
   const purgeVault = async () => {
     if (confirmText !== 'PURGE') return;
-    setLoading(true);
-    setError(null);
-    try {
-      // 1. Delete all items
-      const itemsPath = `vaults/${vaultId}/items`;
-      const itemsSnapshot = await getDocs(collection(db, itemsPath));
-      const batch1 = writeBatch(db);
-      itemsSnapshot.docs.forEach(doc => batch1.delete(doc.ref));
-      await batch1.commit();
-
-      // 2. Delete all logs
-      const logsPath = `vaults/${vaultId}/audit_logs`;
-      const logsSnapshot = await getDocs(collection(db, logsPath));
-      const batch2 = writeBatch(db);
-      logsSnapshot.docs.forEach(doc => batch2.delete(doc.ref));
-      await batch2.commit();
-
-      // 3. Delete all archives
-      const archivesPath = `vaults/${vaultId}/archived_items`;
-      const archivesSnapshot = await getDocs(collection(db, archivesPath));
-      const batch3 = writeBatch(db);
-      archivesSnapshot.docs.forEach(doc => batch3.delete(doc.ref));
-      await batch3.commit();
-
-      // 4. Delete Vault Config
-      await deleteDoc(doc(db, 'vaults', vaultId, 'vault', 'config'));
-      
-      // 5. Delete User Profile (if primary owner)
-      if (isPrimaryOwner) {
-        await deleteDoc(doc(db, 'users', userId));
-      }
-
-      // Successfully purged.
-      onReset();
-      window.location.reload(); 
-    } catch (e: any) {
-      console.error(e);
-      setError(e.message || "Destruction sequence interrupted. Partial purge may have occurred.");
-    } finally {
-      setLoading(false);
-    }
+    onClose();
+    window.dispatchEvent(new CustomEvent('emergency-purge'));
   };
 
   return (
@@ -6674,14 +6956,28 @@ function SettingsModal({
 
         {activeTab === 'rotate' ? (
           <div className="p-8 bg-slate-900 max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20">
-                <Key className="h-6 w-6 text-indigo-400 animate-pulse" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20">
+                  <Key className="h-6 w-6 text-indigo-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white uppercase tracking-tight">Rotate Master Key</h3>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Zero-Knowledge Re-Encryption Protocol</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-white uppercase tracking-tight">Rotate Master Key</h3>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Zero-Knowledge Re-Encryption Protocol</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.dispatchEvent(new CustomEvent('preview-master-key-transition'));
+                }}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-indigo-500/40 bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 hover:text-white text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+                title="Preview Master Key Recovery Sequence Animation"
+              >
+                <Sparkles className="h-3 w-3 text-cyan-400" />
+                <span>Test Transition</span>
+              </button>
             </div>
 
             {rotateSuccess ? (
@@ -7320,6 +7616,23 @@ function SettingsModal({
                   </p>
                 </div>
               )}
+
+              <div className="mt-6 pt-5 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('test-erasure-dry-run'));
+                  }}
+                  className="w-full py-3 px-4 bg-red-950/40 hover:bg-red-900/60 text-red-300 hover:text-white border border-red-500/30 hover:border-red-400 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-950/40 hover:scale-[1.01] active:scale-98"
+                >
+                  <Flame className="h-4 w-4 text-red-400 animate-pulse" />
+                  <span>Launch Erasure Protocol Simulation Drill</span>
+                </button>
+                <span className="block text-[10px] text-slate-500 text-center mt-1.5 font-mono">
+                  Experience the full animatic disintegration & multi-pass audio sequence with zero data erased.
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -7363,6 +7676,7 @@ interface VaultCardProps {
   vaultId: string;
   userId: string;
   encryptionKey: CryptoKey;
+  onFilterType?: (type: string) => void;
 }
 
 const EXCEL_HEADERS = [
@@ -8199,7 +8513,7 @@ function ShieldAlertIcon({ className }: { className?: string }) {
   );
 }
 
-function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardProps) {
+function VaultCard({ item, onEdit, vaultId, userId, encryptionKey, onFilterType }: VaultCardProps) {
   const [showSensitive, setShowSensitive] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -8264,17 +8578,19 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
   };
 
   const colors: Record<string, string> = {
-    credit: "border-l-pink-500 hover:shadow-pink-500/5",
-    bank: "border-l-teal-500 hover:shadow-teal-500/5",
-    brokerage: "border-l-indigo-500 hover:shadow-indigo-500/5",
-    realestate: "border-l-emerald-500 hover:shadow-emerald-500/5",
-    insurance: "border-l-sky-500 hover:shadow-sky-500/5",
-    patent: "border-l-amber-500 hover:shadow-amber-500/5",
-    non_financial: "border-l-cyan-500 hover:shadow-cyan-500/5",
-    will_trust: "border-l-yellow-500 hover:shadow-yellow-500/5",
-    documentation: "border-l-purple-500 hover:shadow-purple-500/5",
-    life_event: "border-l-red-500 hover:shadow-red-500/5",
-    other: "border-l-blue-500 hover:shadow-blue-500/5"
+    realestate: "border-l-emerald-500 hover:shadow-emerald-500/10",
+    crypto: "border-l-teal-500 hover:shadow-teal-500/10",
+    bank: "border-l-sky-500 hover:shadow-sky-500/10",
+    credit: "border-l-pink-500 hover:shadow-pink-500/10",
+    brokerage: "border-l-indigo-500 hover:shadow-indigo-500/10",
+    insurance: "border-l-cyan-500 hover:shadow-cyan-500/10",
+    patent: "border-l-amber-500 hover:shadow-amber-500/10",
+    will_trust: "border-l-purple-500 hover:shadow-purple-500/10",
+    non_financial: "border-l-fuchsia-500 hover:shadow-fuchsia-500/10",
+    documentation: "border-l-slate-500 hover:shadow-slate-500/10",
+    hardware_recovery: "border-l-rose-500 hover:shadow-rose-500/10",
+    life_event: "border-l-red-500 hover:shadow-red-500/10",
+    other: "border-l-slate-600 hover:shadow-slate-600/10"
   };
 
   const handleDelete = async () => {
@@ -8331,21 +8647,12 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
     >
       <div className="p-5 flex-1 pb-1 text-left">
         <div className="flex justify-between items-start mb-2">
-           <div className={cn(
-             "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
-             item.type === 'credit' ? "bg-pink-950/40 text-pink-400 border-pink-500/20" :
-             item.type === 'bank' ? "bg-teal-950/40 text-teal-400 border-teal-500/20" :
-             item.type === 'brokerage' ? "bg-indigo-950/40 text-indigo-400 border-indigo-500/20" :
-             item.type === 'realestate' ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/20" :
-             item.type === 'insurance' ? "bg-sky-950/40 text-sky-400 border-sky-500/20" :
-             item.type === 'patent' ? "bg-amber-950/40 text-amber-400 border-amber-500/20" :
-             item.type === 'non_financial' ? "bg-cyan-950/40 text-cyan-400 border-cyan-500/20" :
-             item.type === 'will_trust' ? "bg-yellow-950/40 text-yellow-400 border-yellow-500/20" :
-             item.type === 'documentation' ? "bg-purple-950/40 text-purple-400 border-purple-500/20" :
-             "bg-slate-800 text-slate-300 border-slate-700/50"
-           )}>
-             {item.type.replace('realestate', 'Real Estate').replace('patent', 'Patent Filing')}
-           </div>
+           <AssetBadge 
+             type={item.type} 
+             variant="glow"
+             onClick={onFilterType ? () => onFilterType(item.type) : undefined}
+             title={onFilterType ? `Click badge to filter vault by ${getAssetTypeMeta(item.type).label}` : undefined}
+           />
            {isOwner && (
              <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                <button onClick={onEdit} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><Edit3 className="h-3.5 w-3.5" /></button>
@@ -8741,15 +9048,18 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey }: VaultCardPr
                {item.currentBalance !== undefined && (
                  <div className={cn(
                    "p-3 rounded-lg border flex items-center justify-between",
-                   item.type === 'bank' ? "bg-teal-950/20 border-teal-500/25" : "bg-indigo-950/20 border-indigo-500/25"
+                   item.type === 'crypto' ? "bg-teal-950/20 border-teal-500/25" :
+                   item.type === 'bank' ? "bg-sky-950/20 border-sky-500/25" : "bg-indigo-950/20 border-indigo-500/25"
                  )}>
                     <span className={cn(
                       "text-[10px] font-bold uppercase tracking-widest",
-                      item.type === 'bank' ? "text-teal-400" : "text-indigo-400"
+                      item.type === 'crypto' ? "text-teal-400" :
+                      item.type === 'bank' ? "text-sky-400" : "text-indigo-400"
                     )}>Current Liquidity</span>
                     <span className={cn(
                       "text-xl font-black",
-                      item.type === 'bank' ? "text-teal-300" : "text-indigo-300"
+                      item.type === 'crypto' ? "text-teal-300" :
+                      item.type === 'bank' ? "text-sky-300" : "text-indigo-300"
                     )}>${item.currentBalance.toLocaleString()}</span>
                  </div>
                )}

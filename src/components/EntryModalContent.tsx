@@ -3,8 +3,10 @@ import { cn } from '../lib/utils';
 import { 
   CreditCard, Landmark, Sliders, Globe, Key, Shield, ShieldCheck, 
   Archive, FileText, ClipboardList, Database, Download, Trash2, 
-  Paperclip, RefreshCw, AlertOctagon, HelpCircle
+  Paperclip, RefreshCw, AlertOctagon, HelpCircle, Info
 } from 'lucide-react';
+import { Tooltip, InfoTooltip, FieldLabel } from './Tooltip';
+import AssetBadge from './AssetBadge';
 
 interface EntryModalContentProps {
   formData: any;
@@ -1011,11 +1013,20 @@ export function EntryModalContent({
       {/* 1. Global Asset Selector framework bar */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-800/60">
         <div>
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 text-left">Asset Category</label>
+          <div className="flex items-center justify-between mb-1">
+            <FieldLabel 
+              label="Asset Category" 
+              required 
+              tooltip="Select the classification of the item. This establishes the specialized schema fields and custom cryptographic metadata."
+              tooltipTitle="Asset Classification"
+              description="Defines field structure and emergency handling protocols"
+            />
+            <AssetBadge type={formData.type} variant="pill" />
+          </div>
           <select 
             value={formData.type}
             onChange={(e) => updateField('type', e.target.value as any)}
-            className="w-full bg-slate-950 border border-slate-800 rounded px-4 py-3 text-sm text-indigo-400 font-extrabold focus:border-indigo-650 outline-none"
+            className="w-full bg-slate-950 border border-slate-800 rounded px-4 py-3 text-sm text-indigo-400 font-extrabold focus:border-indigo-650 outline-none cursor-pointer"
           >
             <option value="credit">Credit Card</option>
             <option value="bank">Bank Account</option>
@@ -1032,7 +1043,13 @@ export function EntryModalContent({
           </select>
         </div>
         <div>
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 text-left">Record Identifier (Name)</label>
+          <FieldLabel 
+            label="Record Identifier (Name)" 
+            required 
+            tooltip="A recognizable title for this asset record. Displayed in your vault dashboard list."
+            tooltipTitle="Record Title"
+            description="Clear, memorable name for easy search and categorization"
+          />
           <input 
             value={formData.name || ''}
             onChange={(e) => updateField('name', e.target.value)}
@@ -1064,7 +1081,12 @@ export function EntryModalContent({
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 text-left">Primary Owner's Legal Name</label>
+            <FieldLabel 
+              label="Primary Owner's Legal Name" 
+              tooltip="The full legal name as it appears on government documents or account statements."
+              tooltipTitle="Legal Titleholder"
+              description="Official account holder name"
+            />
             <input 
               value={formData.ownershipName || ''}
               onChange={(e) => updateField('ownershipName', e.target.value)}
@@ -1073,11 +1095,16 @@ export function EntryModalContent({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 text-left">Legal Ownership Entity</label>
+            <FieldLabel 
+              label="Legal Ownership Entity" 
+              tooltip="Whether the asset is held by you individually, jointly with a spouse/partner, inside a revocable living trust, or by an LLC."
+              tooltipTitle="Ownership Structure"
+              description="Legal entity governing asset transfer"
+            />
             <select 
               value={formData.ownershipType || 'Individual'}
               onChange={(e) => updateField('ownershipType', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded px-4 py-2.5 text-xs text-white focus:border-indigo-600 outline-none"
+              className="w-full bg-slate-900 border border-slate-800 rounded px-4 py-2.5 text-xs text-white focus:border-indigo-600 outline-none cursor-pointer"
             >
               <option value="Individual">Individual</option>
               <option value="Joint">Joint Account / Partnership</option>
@@ -1088,11 +1115,16 @@ export function EntryModalContent({
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 text-left">Heir Security Partition</label>
+            <FieldLabel 
+              label="Heir Security Partition" 
+              tooltip="Cryptographic compartment: 'Personal' remains sealed only for you. 'Wills & Trust' allows designated successor decrypt access upon verified proof."
+              tooltipTitle="Cryptographic Partition"
+              description="Controls zero-knowledge sub-key isolation"
+            />
             <select 
               value={formData.partition || 'Personal'}
               onChange={(e) => updateField('partition', e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded px-4 py-2.5 text-xs text-indigo-400 font-bold focus:border-indigo-505 outline-none"
+              className="w-full bg-slate-900 border border-slate-800 rounded px-4 py-2.5 text-xs text-indigo-400 font-bold focus:border-indigo-505 outline-none cursor-pointer"
             >
               <option value="Personal">Personal (Owner Lock)</option>
               <option value="Family Joint">Family Joint Accounts</option>
@@ -1103,7 +1135,12 @@ export function EntryModalContent({
         </div>
 
         <div>
-          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 text-left">Designated Death / Emergency Beneficiary</label>
+          <FieldLabel 
+            label="Designated Death / Emergency Beneficiary" 
+            tooltip="Name and relationship of the individual or trustee designated to receive or administer this specific asset."
+            tooltipTitle="Succession Beneficiary"
+            description="Primary contact for inheritance distribution"
+          />
           <input 
             value={formData.beneficiary || ''}
             onChange={(e) => updateField('beneficiary', e.target.value)}
