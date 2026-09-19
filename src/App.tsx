@@ -369,7 +369,7 @@ import {
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
-  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu, Hourglass, HeartPulse
+  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu, Hourglass, HeartPulse, Share2, Square, CheckSquare
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
@@ -379,9 +379,14 @@ import {
   hashAnswer, deriveKey, encrypt, decrypt, generateSalt,
   computeSignature, hashSignature, hashMasterKey, hashMasterKeyPBKDF2,
   hmacSignature, serverHmacSignature, timingSafeEqual, CURRENT_PEPPER_VERSION, getPepper,
-  derivePartitionKey, deriveAttachmentKeyAndIV, computeContentHash, encryptAttachment, decryptAttachment
+  derivePartitionKey, deriveAttachmentKeyAndIV, computeContentHash, encryptAttachment, decryptAttachment,
+  localConfigCacheKey, readLocalConfigCacheWithMigration
 } from './lib/crypto';
-import { validateMasterKey, generateSecureMasterKey, splitMasterKey, reconstructMasterKey } from './lib/masterKey';
+import { 
+  validateMasterKey, generateSecureMasterKey, splitMasterKey, reconstructMasterKey,
+  splitMasterKeyConfigurable, reconstructMasterKeyConfigurable,
+  SHAMIR_VERSION_CURRENT, DEFAULT_SHAMIR_K, DEFAULT_SHAMIR_N
+} from './lib/masterKey';
 import { SECURITY_QUESTIONS } from './constants/questions';
 import AdminPanel from './components/AdminPanel';
 import { EntryModalContent } from './components/EntryModalContent';
@@ -393,9 +398,21 @@ import CinematicQuestionExperience from './components/CinematicQuestionExperienc
 import CinematicVerificationChallenge from './components/CinematicVerificationChallenge';
 import VaultHealthWidget from './components/VaultHealthWidget';
 import AssetBadge, { getAssetTypeMeta, ASSET_TYPE_CONFIG } from './components/AssetBadge';
+import AssetExpirationBadge from './components/AssetExpirationBadge';
+import { getAssetExpirationStatus } from './utils/expirationAlerts';
+import { AssetPortfolioStats } from './components/AssetPortfolioStats';
+import { AssetDrawer } from './components/AssetDrawer';
+import { AssetItemShareModal } from './components/AssetItemShareModal';
+import { AssetTableView } from './components/AssetTableView';
+import { AssetGroupedView } from './components/AssetGroupedView';
+import { AssetTimelineView } from './components/AssetTimelineView';
+import { AssetBatchBar } from './components/AssetBatchBar';
+import { ViewMode, SortField, SortDirection } from './types';
+import { getItemMonetaryValue } from './components/AssetPillars';
+import { seedInitialFirebaseData } from './utils/firebaseSeed';
 import GuidedTour, { TourLauncherButton } from './components/GuidedTour';
 import { Tooltip, InfoTooltip, FieldLabel } from './components/Tooltip';
-import { Coins, Wallet, Flame, Sparkles } from 'lucide-react';
+import { Coins, Wallet, Flame, Sparkles, Clock, Calendar, AlertTriangle } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/error-handler';
 import DatabaseStatus from './components/DatabaseStatus';
 import ErasureProtocolAnimation from './components/ErasureProtocolAnimation';
@@ -410,6 +427,19 @@ import {
   authenticateWithBiometrics 
 } from './lib/webauthn';
 import { generateLocalQrDataUrl } from './lib/localQr';
+import { 
+  createNewVaultKeyMaterial, KDF_VERSION_CURRENT, validateAnswerEntropy, 
+  rekeyVaultWithHardwareAuthenticator, derivePartitionSubKeyV2, derivePartitionSubKeyRawV2,
+  deriveBaseKEK, deriveFinalKEK, generateSaltBytes
+} from './lib/vaultKeys';
+import { getWebAuthnPRFOutputForNewCredential } from './lib/webauthn';
+import { deriveSessionKeyForConfig, deriveSessionMaterialForConfig } from './lib/sessionKeyBridge';
+import { appendAuditEntry, verifyChainIntegrity, exportSignedAuditLog } from './lib/auditChain';
+import { 
+  generateMemberKeyPair, wrapMemberPrivateKey, unwrapMemberPrivateKey, 
+  createShareToken, unwrapShareToken, type ShareToken 
+} from './lib/shareTokens';
+import { enrollDuressVault, attemptDuressUnlock } from './lib/duressVault';
 
 /**
  * SECURITY FIX: replaces <img src="https://api.qrserver.com/...?data=<plaintext key>">.
@@ -469,6 +499,8 @@ interface DecryptedItem {
   policyNumber?: string;
   carrier?: string;
   coverageAmount?: number;
+  premiumDueDate?: string;
+  maturityDate?: string;
 
   // Patent / Intellectual Property
   patentTitle?: string;
@@ -494,6 +526,7 @@ interface DecryptedItem {
   identifierReference?: string;
   assetDescription?: string;
   locationCustodian?: string;
+  collectionDate?: string;
   
   // Will & Trust Or Estates
   trusteeNames?: string;
@@ -575,15 +608,42 @@ enum AuditResourceType {
   VAULT = "VAULT"
 }
 
+// Claim 4(a): a stable session ID for the encrypted chain entries this tab
+// writes during this app load.
+const AUDIT_SESSION_ID = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+  ? crypto.randomUUID()
+  : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 const logVaultAction = async (
-  vaultId: string, 
-  user: User, 
+  vaultId: string,
+  user: User,
   action: AuditAction | string,
   resourceType: AuditResourceType | string,
   resourceId?: string | null,
-  details?: string | null
+  details?: string | null,
+  auditDekHkdfBase?: CryptoKey,
+  partitionId?: string | null
 ) => {
   const path = `vaults/${vaultId}/audit_logs`;
+  // Claim 4/20/21/23: Dual-write to encrypted Merkle-chained local log when dekHkdfBase is present
+  if (auditDekHkdfBase) {
+    try {
+      const { merkleRoot } = await appendAuditEntry(vaultId, auditDekHkdfBase, {
+        actionType: String(action),
+        actorUid: user.uid,
+        partitionId: partitionId ?? null,
+        itemIds: resourceId ? [resourceId] : [],
+        timestampIso: new Date().toISOString(),
+        sessionId: AUDIT_SESSION_ID,
+      });
+      // Claim 4(f): only the Merkle root is synced to server
+      await updateDoc(doc(db, 'vaults', vaultId, 'vault', 'config'), {
+        auditMerkleRoot: merkleRoot,
+      }).catch(() => {});
+    } catch (encAuditErr) {
+      console.warn('Encrypted audit chain append failed (plaintext log below is unaffected):', encAuditErr);
+    }
+  }
   try {
     const logRef = collection(db, 'vaults', vaultId, 'audit_logs');
     
@@ -695,6 +755,17 @@ interface VaultConfig {
     duressWrappedDEK: string;
     duressWrappedDEKIv: string;
   };
+
+  // --- Claims 3/17/18: configurable (k, n) GF(2^8) Shamir recovery
+  shamirVersion?: number;
+  shamirK?: number;
+  shamirN?: number;
+
+  // --- Claim 2/15/16/19: HKDF partition sub-key version
+  partitionKeyVersion?: number;
+
+  // --- Claim 4(f)/21/23: current Merkle root of encrypted audit chain
+  auditMerkleRoot?: string;
 }
 
 // --- Main Component ---
@@ -710,6 +781,10 @@ export default function App() {
   const [isLocked, setIsLocked] = useState(true);
   const [decryptedEntries, setDecryptedEntries] = useState<DecryptedItem[]>([]);
   const [activeKey, setActiveKey] = useState<CryptoKey | null>(null);
+  // Claim 2: master DEK HKDF base key for v2 vaults
+  const [activeDekHkdfBase, setActiveDekHkdfBase] = useState<CryptoKey | undefined>(undefined);
+  // Claim 6: per-partition sub-keys unwrapped from Share Tokens for shared members
+  const [activePartitionKeyMap, setActivePartitionKeyMap] = useState<Record<string, CryptoKey> | undefined>(undefined);
   const [activeSignature, setActiveSignature] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ message: string, type: 'info' | 'error' | 'success' } | null>(null);
   const [loginPending, setLoginPending] = useState(false);
@@ -754,7 +829,7 @@ export default function App() {
     return () => window.removeEventListener('app-notify', handleNotify);
   }, []);
 
-  const [screen, setScreen] = useState<'auth' | 'setup' | 'verify' | 'vault' | 'corrupted' | 'admin_login' | 'admin_dashboard'>('auth');
+  const [screen, setScreen] = useState<'auth' | 'setup' | 'verify' | 'member_verify' | 'vault' | 'corrupted' | 'admin_login' | 'admin_dashboard'>('auth');
   const [vaultId, setVaultId] = useState<string | null>(null);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState<boolean | null>(null);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
@@ -771,6 +846,9 @@ export default function App() {
   });
 
   useEffect(() => {
+    // Check and seed initial persistence documents in new Firebase project
+    seedInitialFirebaseData(auth.currentUser?.email);
+
     const sRef = doc(db, 'system', 'config');
     const unsub = onSnapshot(sRef, (snap) => {
       if (snap.exists()) {
@@ -1076,6 +1154,7 @@ export default function App() {
       setLoading(true);
       if (u) {
         setUser(u);
+        seedInitialFirebaseData(u.email);
         
         if (u.email === 'solarastra.in@gmail.com') {
           setScreen(prev => {
@@ -1174,7 +1253,7 @@ export default function App() {
       if (ownerSnap && ownerSnap.exists()) {
         const data = ownerSnap.data() as VaultConfig;
         try {
-          localStorage.setItem(`whyor_vault_config_${u.uid}`, JSON.stringify(data));
+          localStorage.setItem(await localConfigCacheKey(u.uid), JSON.stringify(data));
         } catch (storageErr) {
           console.warn("Failed to write vault configuration to localStorage", storageErr);
         }
@@ -1209,21 +1288,22 @@ export default function App() {
           const data = sharedSnap.data() as VaultConfig;
           if (data.members.includes(u.email || '')) {
             try {
-              localStorage.setItem(`whyor_vault_config_${u.uid}`, JSON.stringify(data));
+              localStorage.setItem(await localConfigCacheKey(u.uid), JSON.stringify(data));
             } catch (storageErr) {
               console.warn("Failed to write vault configuration to localStorage", storageErr);
             }
             setVaultConfig(data);
             setVaultId(vId);
+            // Claim 6: shared members unlock via MemberVerifyScreen
             if (data.isCorrupted) setScreen('corrupted');
-            else setScreen('verify');
+            else setScreen('member_verify');
             return;
           }
         }
       }
 
-      // OFFLINE DEEP FALLBACK: If Firestore was unreachable but we have a local cached configuration
-      const cachedConfigStr = localStorage.getItem(`whyor_vault_config_${u.uid}`);
+      // OFFLINE DEEP FALLBACK: If Firestore was unreachable but we have a local cached configuration (Claim 26)
+      const cachedConfigStr = await readLocalConfigCacheWithMigration(u.uid);
       if (cachedConfigStr) {
         try {
           const data = JSON.parse(cachedConfigStr) as VaultConfig;
@@ -1305,6 +1385,8 @@ export default function App() {
       console.warn("Logout signout warning:", e);
     }
     setActiveKey(null);
+    setActiveDekHkdfBase(undefined);
+    setActivePartitionKeyMap(undefined);
     setActiveSignature(null);
     setDecryptedEntries([]);
     setIsLocked(true);
@@ -1315,10 +1397,12 @@ export default function App() {
 
   const handleQuickLock = () => {
     setActiveKey(null);
+    setActiveDekHkdfBase(undefined);
+    setActivePartitionKeyMap(undefined);
     setActiveSignature(null);
     setDecryptedEntries([]);
     setIsLocked(true);
-    setScreen('verify');
+    setScreen(activePartitionKeyMap !== undefined ? 'member_verify' : 'verify');
     window.dispatchEvent(new CustomEvent('app-notify', { 
       detail: { 
         message: 'Quick Lock engaged. Active cryptographic session key purged from memory.', 
@@ -1448,15 +1532,16 @@ export default function App() {
                   user={user} 
                   onComplete={() => findVault(user)} 
                   onLogout={logout}
-                  onVaultCreated={(config, key, signature) => {
+                  onVaultCreated={async (config, key, signature, dekHkdfBase) => {
                     try {
-                      localStorage.setItem(`whyor_vault_config_${user.uid}`, JSON.stringify(config));
+                      localStorage.setItem(await localConfigCacheKey(user.uid), JSON.stringify(config));
                     } catch (storageErr) {
                       console.warn("Failed to write vault configuration to localStorage", storageErr);
                     }
                     setVaultConfig(config);
                     setLastActivity(Date.now());
                     setActiveKey(key);
+                    setActiveDekHkdfBase(dekHkdfBase);
                     if (signature) setActiveSignature(signature);
                     setVaultId(user.uid);
                     setIsLocked(false);
@@ -1481,9 +1566,10 @@ export default function App() {
                   config={vaultConfig}
                   userId={user.uid}
                   vaultId={vaultId}
-                  onUnlock={(key, entries, signature) => {
+                  onUnlock={(key, entries, signature, dekHkdfBase) => {
                     setLastActivity(Date.now());
                     setActiveKey(key);
+                    setActiveDekHkdfBase(dekHkdfBase);
                     setDecryptedEntries(entries);
                     if (signature) setActiveSignature(signature);
                     setIsLocked(false);
@@ -1503,6 +1589,39 @@ export default function App() {
               </motion.div>
             )}
 
+            {screen === 'member_verify' && vaultConfig && vaultId && (
+              <motion.div
+                key="member-verify-screen-wrapper"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                className="w-full flex justify-center"
+              >
+                <MemberVerifyScreen
+                  key="member-verify-screen"
+                  config={vaultConfig}
+                  userId={user.uid}
+                  userEmail={user.email || ''}
+                  vaultId={vaultId}
+                  onMemberUnlock={async (partitionKeyMap) => {
+                    setLastActivity(Date.now());
+                    const placeholder = await crypto.subtle.generateKey(
+                      { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                    );
+                    setActiveKey(placeholder);
+                    setActiveDekHkdfBase(undefined);
+                    setActivePartitionKeyMap(partitionKeyMap);
+                    setDecryptedEntries([]);
+                    setIsLocked(false);
+                    setScreen('vault');
+                    setIsMovieVaultOpeningOpen(true);
+                  }}
+                  onLogout={logout}
+                />
+              </motion.div>
+            )}
+
             {screen === 'corrupted' && vaultConfig && vaultId && (
               <motion.div
                 key="corrupted-screen-wrapper"
@@ -1517,9 +1636,10 @@ export default function App() {
                   config={vaultConfig}
                   userId={user.uid}
                   vaultId={vaultId}
-                  onRecover={(key, entries, signature, answers) => {
+                  onRecover={(key, entries, signature, answers, dekHkdfBase) => {
                     setLastActivity(Date.now());
                     setActiveKey(key);
+                    setActiveDekHkdfBase(dekHkdfBase);
                     setDecryptedEntries(entries);
                     if (signature) setActiveSignature(signature);
                     if (answers) {
@@ -1571,6 +1691,8 @@ export default function App() {
                     key="vault-main"
                     entries={decryptedEntries}
                     encryptionKey={activeKey}
+                    dekHkdfBase={activeDekHkdfBase}
+                    partitionKeyMap={activePartitionKeyMap}
                     combinedSignature={activeSignature}
                     userId={user.uid}
                     userEmail={user.email || 'anonymous@why-or-vault.com'}
@@ -2328,7 +2450,11 @@ function AdminLoginScreen({
   );
 }
 
-function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: User, onComplete: () => void, onLogout: () => void, onVaultCreated: (config: VaultConfig, key: CryptoKey, signature: string) => void, key?: string }) {
+function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: User, onComplete: () => void, onLogout: () => void, onVaultCreated: (config: VaultConfig, key: CryptoKey, signature: string, dekHkdfBase?: CryptoKey) => void, key?: string }) {
+  // Claim 3/17/18: configurable (k, n) Shamir threshold
+  const [shamirK, setShamirK] = useState<number>(DEFAULT_SHAMIR_K);
+  const [shamirN, setShamirN] = useState<number>(DEFAULT_SHAMIR_N);
+  const [configurableShares, setConfigurableShares] = useState<string[]>([]);
   const [step, setStep] = useState<'intro' | 'master_key' | 'delivery' | 'drill' | 'questions'>('intro');
   const [deliveryProfile, setDeliveryProfile] = useState<'consumer' | 'pro'>('consumer');
   const [masterKey, setMasterKey] = useState('');
@@ -2378,13 +2504,15 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
     try {
       const sssShares = splitMasterKey(masterKey);
       setShares(sssShares);
+      const conf = splitMasterKeyConfigurable(masterKey, shamirK, shamirN);
+      setConfigurableShares(conf);
     } catch (e) {
       console.error("Crypto Shamir split failure:", e);
     }
     setStep('delivery');
   };
 
-  const handleRunRecoveryDrill = () => {
+  const handleRunRecoveryDrill = async () => {
     setDrillError('');
     setDrillSuccess(false);
     
@@ -2400,7 +2528,12 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
         return;
       }
       try {
-        const reconstructed = reconstructMasterKey([drillShareA, drillShareB]);
+        let reconstructed: string;
+        if (configurableShares.length > 0) {
+          reconstructed = await reconstructMasterKeyConfigurable([drillShareA.trim(), drillShareB.trim()]);
+        } else {
+          reconstructed = reconstructMasterKey([drillShareA.trim(), drillShareB.trim()]);
+        }
         if (reconstructed === masterKey) {
           setDrillSuccess(true);
         } else {
@@ -2525,11 +2658,52 @@ SAFEKEEPING PROTOCOL:
        // 5. Generate Combined Signature
       const combinedSignature = await computeSignature(hashedAnswers);
       
+      // Claim 13: Passphrase entropy enforcement at creation
+      for (let i = 0; i < answers.length; i++) {
+        const check = validateAnswerEntropy(answers[i]);
+        if (!check.valid) {
+          window.dispatchEvent(new CustomEvent('app-notify', {
+            detail: {
+              message: `Answer ${i + 1} entropy insufficient: ${check.error || 'Too predictable'}`,
+              type: 'error',
+            },
+          }));
+          setLoading(false);
+          return;
+        }
+      }
+
       // 6. Generate salt for signature hashing
       const globalSalt = generateSalt();
       const signatureHash = await serverHmacSignature(combinedSignature, globalSalt, CURRENT_PEPPER_VERSION);
-            // 7. Derive Session Key from combined signature
-      const sessionKey = await deriveKey(combinedSignature, globalSalt);
+
+      // Phase 1 Protocol:
+      // Claim 1/11/12/14: dual-route KDF cascade + WebAuthn PRF
+      let prfEnrollment: { credentialId: string; prfOutput: ArrayBuffer; prfSalt: ArrayBuffer } | null = null;
+      try {
+        const canWebAuthn = typeof window !== 'undefined' && 'credentials' in navigator;
+        if (canWebAuthn) {
+          prfEnrollment = await getWebAuthnPRFOutputForNewCredential(user.email || 'user@whyor.io');
+        }
+      } catch (e) {
+        console.warn('WebAuthn PRF enrollment fallback to Claim 14 passphrase-only Base KEK.', e);
+      }
+
+      const v2KeyMaterial = await createNewVaultKeyMaterial(
+        combinedSignature,
+        prfEnrollment ? prfEnrollment.prfOutput : undefined
+      );
+      const sessionKey = v2KeyMaterial.dek;
+
+      // Claim 9: Decoy duress vault initialization
+      let decoyVaultConfig: any = null;
+      if (duressKey) {
+        try {
+          decoyVaultConfig = await enrollDuressVault(duressKey, { partitionsToPopulate: [] });
+        } catch (decoyErr) {
+          console.warn('Failed to construct decoy duress vault payload:', decoyErr);
+        }
+      }
 
       // Derive Escrow Key from Master Key and Master Key Salt to encrypt the combined signature and answers
       const escrowKey = await deriveKey(masterKey, masterKeySalt);
@@ -2539,7 +2713,7 @@ SAFEKEEPING PROTOCOL:
       const configRef = doc(db, 'vaults', user.uid, 'vault', 'config');
       const hashedDuressVal = duressKey ? await hashMasterKey(duressKey, masterKeySalt) : '';
       
-      const configPayload = {
+      const configPayload: any = {
         answerSalts,
         signatureHash,
         pepperVersion: CURRENT_PEPPER_VERSION,
@@ -2555,7 +2729,22 @@ SAFEKEEPING PROTOCOL:
         ownerEmails: [user.email || ''],
         members: [],
         encryptedSignatureEscrow,
-        encryptedAnswersEscrow
+        encryptedAnswersEscrow,
+        // Claim 1/12 fields
+        kdfVersion: KDF_VERSION_CURRENT,
+        argonPbkdfSaltB64: v2KeyMaterial.argonPbkdfSaltB64,
+        wrappedDEK: v2KeyMaterial.wrappedDEK,
+        wrappedDEKIv: v2KeyMaterial.wrappedDEKIv,
+        usedPRFAtCreation: v2KeyMaterial.usedPRF,
+        ...(prfEnrollment ? {
+          webauthnPrfCredentialId: prfEnrollment.credentialId,
+          webauthnPrfSaltB64: btoa(String.fromCharCode(...new Uint8Array(prfEnrollment.prfSalt))),
+        } : {}),
+        // Claim 3/17 fields
+        shamirVersion: SHAMIR_VERSION_CURRENT,
+        shamirK,
+        shamirN,
+        ...(decoyVaultConfig ? { decoyDuressVault: decoyVaultConfig } : {})
       };
 
       await setDoc(configRef, configPayload).catch(e => handleFirestoreError(e, OperationType.CREATE, 'vault/config'));
@@ -2571,25 +2760,7 @@ SAFEKEEPING PROTOCOL:
       
       await logVaultAction(user.uid, user, AuditAction.CREATE, AuditResourceType.VAULT, user.uid, "Phase 1: Vault Genesis Protocol Completed with Duress support.");
       
-      onVaultCreated({
-        hashedAnswers,
-        answerSalts,
-        signatureHash,
-        pepperVersion: CURRENT_PEPPER_VERSION,
-        masterKeySalt,
-        hashedMasterKey,
-        hashedDuressKey: hashedDuressVal,
-        masterKeyFailedAttempts: 0,
-        salt: globalSalt,
-        failedAttempts: 0,
-        isCorrupted: false,
-        ownerId: user.uid,
-        owners: [],
-        ownerEmails: [user.email || ''],
-        members: [],
-        encryptedSignatureEscrow,
-        encryptedAnswersEscrow
-      }, sessionKey, combinedSignature);;
+      onVaultCreated(configPayload, sessionKey, combinedSignature, v2KeyMaterial.dekHkdfBase);
       
       onComplete();
     } catch (e) {
@@ -4221,7 +4392,262 @@ SAFEKEEPING PROTOCOL:
 }
 
 
-function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, onStartGuidedTour }: { config: VaultConfig, userId: string, vaultId: string, onUnlock: (key: CryptoKey, entries: DecryptedItem[], signature?: string) => void, onCorrupt: (source?: string) => void, onLogout: () => void, onStartGuidedTour?: () => void, key?: string }) {
+
+// =========================================================================
+// MemberVerifyScreen: Claim 6 Client-Only Zero-Knowledge Family Sharing
+// =========================================================================
+function MemberVerifyScreen({
+  config: _config,
+  userId,
+  userEmail,
+  vaultId,
+  onMemberUnlock,
+  onLogout
+}: {
+  config: VaultConfig;
+  userId: string;
+  userEmail: string;
+  vaultId: string;
+  onMemberUnlock: (partitionKeyMap: Record<string, CryptoKey>) => void;
+  onLogout: () => void;
+  key?: string;
+}) {
+  const [passphrase, setPassphrase] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [isEnrolled, setIsEnrolled] = useState<boolean | null>(null);
+  const [memberDoc, setMemberDoc] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function checkEnrollment() {
+      try {
+        const memRef = doc(db, 'vaults', vaultId, 'members', userId);
+        const snap = await fbGetDoc(memRef);
+        if (snap.exists()) {
+          setIsEnrolled(true);
+          setMemberDoc(snap.data());
+        } else {
+          setIsEnrolled(false);
+        }
+      } catch (e: any) {
+        console.error('Member check error:', e);
+        setIsEnrolled(false);
+      }
+    }
+    checkEnrollment();
+  }, [vaultId, userId]);
+
+  const executeUnlock = async (unwrappedPrivKey: CryptoKey) => {
+    // Fetch all share tokens granted to this member
+    const tokensRef = collection(db, 'vaults', vaultId, 'shareTokens');
+    const q = query(tokensRef, where('memberUid', '==', userId));
+    const snap = await fbGetDocs(q);
+
+    const partitionKeyMap: Record<string, CryptoKey> = {};
+    const now = Date.now();
+
+    for (const d of snap.docs) {
+      const token = d.data() as ShareToken & { memberUid?: string };
+      // Claim 24: time-lock gating
+      if (token.releaseCondition?.type === 'time_lock') {
+        const releaseTime = new Date(token.releaseCondition.releaseAtIso).getTime();
+        if (releaseTime > now) {
+          console.log(`Partition ${token.partitionId} is time-locked until ${token.releaseCondition.releaseAtIso}`);
+          continue; // skip withheld token
+        }
+      }
+      try {
+        const unwrapRes = await unwrapShareToken(token, unwrappedPrivKey);
+        partitionKeyMap[token.partitionId] = unwrapRes;
+      } catch (tokErr) {
+        console.warn(`Failed to unwrap share token for ${token.partitionId}:`, tokErr);
+      }
+    }
+
+    onMemberUnlock(partitionKeyMap);
+    notify('Member authorization verified. Partition access unlocked.', 'success');
+  };
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passphrase.length < 8) {
+      setError('Passphrase must be at least 8 characters.');
+      return;
+    }
+    if (passphrase !== confirmPassphrase) {
+      setError('Passphrases do not match.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const memberSalt = generateSaltBytes(16);
+      const memberBaseKek = await deriveBaseKEK(passphrase, memberSalt);
+      const { key: memberFinalKek } = await deriveFinalKEK(memberBaseKek);
+      const { publicKeyJwk, privateKey } = await generateMemberKeyPair();
+      const wrapped = await wrapMemberPrivateKey(privateKey, memberFinalKek);
+      const memberData = {
+        uid: userId,
+        email: userEmail,
+        publicKeyJwk,
+        wrapped: wrapped.wrapped,
+        iv: wrapped.iv,
+        saltB64: btoa(String.fromCharCode(...memberSalt)),
+        enrolledAt: Date.now()
+      };
+      await setDoc(doc(db, 'vaults', vaultId, 'members', userId), memberData);
+      setMemberDoc(memberData);
+      setIsEnrolled(true);
+
+      // Now attempt unlock of tokens
+      await executeUnlock(privateKey);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Enrollment failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passphrase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      if (!memberDoc) throw new Error('Member enrollment record not found.');
+      const memberSalt = Uint8Array.from(atob(memberDoc.saltB64), c => c.charCodeAt(0));
+      const memberBaseKek = await deriveBaseKEK(passphrase, memberSalt);
+      const { key: memberFinalKek } = await deriveFinalKEK(memberBaseKek);
+      const privateKey = await unwrapMemberPrivateKey(
+        memberDoc.wrapped,
+        memberDoc.iv,
+        memberFinalKek
+      );
+      await executeUnlock(privateKey);
+    } catch (err: any) {
+      console.error(err);
+      setError('Invalid passphrase or unwrapping failure.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isEnrolled === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950">
+        <div className="text-slate-400 text-sm font-mono animate-pulse">Verifying Member Status...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl"
+      >
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-3">
+            <Users className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-bold text-white">
+            {isEnrolled ? 'Member Vault Unlock' : 'Family Member Enrollment'}
+          </h2>
+          <p className="text-xs text-slate-400 mt-1">
+            {isEnrolled
+              ? 'Enter your private passphrase to unwrap granted partitions.'
+              : 'Set up your end-to-end encrypted member keypair.'}
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {isEnrolled ? (
+          <form onSubmit={handleUnlock} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Your Member Passphrase
+              </label>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="Enter passphrase"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+              <span>{loading ? 'Unwrapping Keys...' : 'Unlock Member Access'}</span>
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleEnroll} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Create Member Passphrase
+              </label>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                placeholder="Minimum 8 characters"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Confirm Passphrase
+              </label>
+              <input
+                type="password"
+                value={confirmPassphrase}
+                onChange={(e) => setConfirmPassphrase(e.target.value)}
+                placeholder="Confirm passphrase"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
+              <span>{loading ? 'Generating Keypair...' : 'Complete Enrollment & Unlock'}</span>
+            </button>
+          </form>
+        )}
+
+        <div className="mt-6 pt-4 border-t border-slate-800 flex justify-center">
+          <button
+            onClick={onLogout}
+            className="text-xs text-slate-500 hover:text-slate-300 font-bold uppercase tracking-wider flex items-center gap-1.5"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, onStartGuidedTour }: { config: VaultConfig, userId: string, vaultId: string, onUnlock: (key: CryptoKey, entries: DecryptedItem[], signature?: string, dekHkdfBase?: CryptoKey) => void, onCorrupt: (source?: string) => void, onLogout: () => void, onStartGuidedTour?: () => void, key?: string }) {
   const [stage, setStage] = useState<1 | 2 | 3>(1);
   const [shuffledIndices, setShuffledIndices] = useState<number[]>([]);
   const [indices, setIndices] = useState<number[]>([]);
@@ -4276,7 +4702,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
       }
 
       if (matched) {
-        const sessionKey = await deriveKey(combinedSig, config.salt);
+        const { dek: sessionKey, dekHkdfBase } = await deriveSessionMaterialForConfig(combinedSig, config);
         const actor = auth.currentUser;
         if (actor) {
           logVaultAction(vaultId, actor, AuditAction.LOGIN_SUCCESS, AuditResourceType.VAULT, vaultId, "Vault unlocked with biometric hardware.")
@@ -4302,7 +4728,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
              .catch(e => console.warn("Biometric failedAttempts clear failed:", e));
         }
         
-        onUnlock(sessionKey, [], combinedSig);
+        onUnlock(sessionKey, [], combinedSig, dekHkdfBase);
         notify("Biometric verification validated. Welcome back.", "success");
       } else {
         notify("Biometric signature mismatch. Please use security challenge questions.", "error");
@@ -4401,7 +4827,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
 
       // 4. Send signature hash only to compare (Phase 2 step 3)
       if (matched) {
-        const sessionKey = await deriveKey(combinedSignature, config.salt);
+        const { dek: sessionKey, dekHkdfBase } = await deriveSessionMaterialForConfig(combinedSignature, config);
         const actor = auth.currentUser;
         if (actor) {
           logVaultAction(vaultId, actor, AuditAction.LOGIN_SUCCESS, AuditResourceType.VAULT, vaultId)
@@ -4427,7 +4853,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
              .catch(e => console.warn("Failed attempts status update failed:", e));
         }
         
-        onUnlock(sessionKey, [], combinedSignature);
+        onUnlock(sessionKey, [], combinedSignature, dekHkdfBase);
       } else {
         handleFailure();
       }
@@ -4673,7 +5099,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
   );
 }
 
-function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallbackToQA, onReplayTransition }: { config: VaultConfig, userId: string, vaultId: string, onRecover: (key: CryptoKey, entries: DecryptedItem[], signature?: string, answers?: string[]) => void, onLogout: () => void, onFallbackToQA: () => void, onReplayTransition?: () => void, key?: string }) {
+function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallbackToQA, onReplayTransition }: { config: VaultConfig, userId: string, vaultId: string, onRecover: (key: CryptoKey, entries: DecryptedItem[], signature?: string, answers?: string[], dekHkdfBase?: CryptoKey) => void, onLogout: () => void, onFallbackToQA: () => void, onReplayTransition?: () => void, key?: string }) {
   const [authMode, setAuthMode] = useState<'master_key' | 'sss'>('master_key');
   const [masterKey, setMasterKey] = useState('');
   const [share1, setShare1] = useState('');
@@ -4694,6 +5120,20 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
           notify("Please enter your Master Key.", "error");
           setLoading(false);
           return;
+        }
+
+        // Claim 9: Decoy duress vault check first
+        if (config.decoyDuressVault) {
+          try {
+            const decoyRes = await attemptDuressUnlock(cleanInput, config.decoyDuressVault);
+            if (decoyRes) {
+              notify("Vault unlocked in duress mode.", "info");
+              onRecover(decoyRes.dek, [], undefined, undefined, decoyRes.dekHkdfBase);
+              return;
+            }
+          } catch (duressErr) {
+            console.warn("Decoy duress unlock check error:", duressErr);
+          }
         }
 
         // 1. DURESS TRIGGER CHECK:
@@ -4731,7 +5171,17 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
         }
 
         try {
-          // Reconstruct master key from the any 2 shares
+          // Claim 3/17: Configurable Shamir reconstruction
+          if (config.shamirVersion === SHAMIR_VERSION_CURRENT) {
+            computedKey = await reconstructMasterKeyConfigurable([cleanShareA, cleanShareB]);
+          } else {
+            computedKey = reconstructMasterKey([cleanShareA, cleanShareB]);
+          }
+        } catch (reconstructErr: any) {
+          console.error("SSS Reconstruction failure:", reconstructErr);
+          computedKey = "RECONSTRUCT_FAILURE_INVALID_VAL_KEY_SEED";
+        }
+        if (false) try {
           computedKey = reconstructMasterKey([cleanShareA, cleanShareB]);
         } catch (reconstructErr: any) {
           console.error("SSS Reconstruction failure:", reconstructErr);
@@ -4776,6 +5226,7 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
 
         // Retrieve and Decrypt Cryptographic Zero-Knowledge Session Escrows using Master Key
         let recoveredSessionKey: CryptoKey | null = null;
+        let recoveredDekHkdfBase: CryptoKey | undefined = undefined;
         let recoveredSignature: string | null = null;
         let recoveredAnswers: string[] | null = null;
 
@@ -4785,7 +5236,9 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
             recoveredSignature = await decrypt(config.encryptedSignatureEscrow, escrowKey, "escrow-signature-binding");
             
             if (recoveredSignature) {
-              recoveredSessionKey = await deriveKey(recoveredSignature, config.salt);
+              const sessionMaterial = await deriveSessionMaterialForConfig(recoveredSignature, config);
+              recoveredSessionKey = sessionMaterial.dek;
+              recoveredDekHkdfBase = sessionMaterial.dekHkdfBase;
               console.log("Master key-derived escrow decryption was completed successfully.");
             }
 
@@ -4800,7 +5253,7 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
 
         if (recoveredSessionKey && recoveredSignature) {
           notify("Vault credentials verified. Decryption escrow retrieved! Entering vault...", "success");
-          onRecover(recoveredSessionKey, [], recoveredSignature, recoveredAnswers || undefined);
+          onRecover(recoveredSessionKey, [], recoveredSignature, recoveredAnswers || undefined, recoveredDekHkdfBase);
         } else {
           notify("Legacy Vault restriction: Master Key verified, but older vaults do not contain the escrow feature. You must fulfill the 10 QA to mathematically derive your session key. If you forgot the answers, the vault is unrecoverable.", "error");
           setTimeout(() => {
@@ -5062,6 +5515,8 @@ const vaultCardItemVariant = {
 function VaultMain({ 
   entries: initialEntries, 
   encryptionKey, 
+  dekHkdfBase,
+  partitionKeyMap,
   userId, 
   userEmail, 
   vaultId, 
@@ -5086,6 +5541,8 @@ function VaultMain({
 }: { 
   entries: DecryptedItem[], 
   encryptionKey: CryptoKey, 
+  dekHkdfBase?: CryptoKey,
+  partitionKeyMap?: Record<string, CryptoKey>,
   userId: string, 
   userEmail: string, 
   vaultId: string, 
@@ -5130,7 +5587,7 @@ function VaultMain({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'credit' | 'bank' | 'brokerage' | 'realestate' | 'insurance' | 'patent' | 'non_financial' | 'will_trust' | 'documentation' | 'events' | 'crypto' | 'hardware_recovery' | 'admin' | 'other'>('all');
+  const [filter, setFilter] = useState<'all' | 'expiring_soon' | 'credit' | 'bank' | 'brokerage' | 'realestate' | 'insurance' | 'patent' | 'non_financial' | 'will_trust' | 'documentation' | 'events' | 'crypto' | 'hardware_recovery' | 'admin' | 'other'>('all');
   const [search, setSearch] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<DecryptedItem | null>(null);
@@ -5141,6 +5598,19 @@ function VaultMain({
   const [visibleRecoveredAnswers, setVisibleRecoveredAnswers] = useState<Record<number, boolean>>({});
   const [isChallengeAnswersOpen, setIsChallengeAnswersOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // New Competitor-Beating Asset Organization & Management Suite
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [sortField, setSortField] = useState<SortField>('updatedAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [activeDrawerItem, setActiveDrawerItem] = useState<DecryptedItem | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [shareTargetItem, setShareTargetItem] = useState<DecryptedItem | null>(null);
+  const [shareTargetItems, setShareTargetItems] = useState<DecryptedItem[]>([]);
+  const [isItemShareModalOpen, setIsItemShareModalOpen] = useState(false);
 
   // Dynamic system and pricing rates configured inside control console
   const [systemConfig, setSystemConfig] = useState({
@@ -5198,18 +5668,42 @@ function VaultMain({
             const itemPartition = (data as any).partition || 'Personal';
             let decryptedData: any = null;
             
-            // 1. Try decrypting using per-partition HKDF subkey (New secure standard)
-            if (combinedSignature) {
+            // Tier 0 (Claim 6/24): Shared member session partition key
+            if (partitionKeyMap && partitionKeyMap[itemPartition]) {
+              try {
+                decryptedData = await decrypt(data.encryptedData, partitionKeyMap[itemPartition], `${vaultId}:${doc.id}`);
+              } catch {
+                decryptedData = null;
+              }
+            }
+
+            // Tier 1 (Claim 2/15): Per-partition HKDF subkey derived from DEK HKDF Base
+            if (!decryptedData && dekHkdfBase) {
+              try {
+                const partitionKey = await derivePartitionSubKeyV2({
+                  dekHkdfBase,
+                  partitionId: itemPartition,
+                  ownerUid: vaultId,
+                  version: vaultConfig?.partitionKeyVersion || 1,
+                  salt: new TextEncoder().encode(vaultConfig?.salt || 'whyor-default-salt')
+                });
+                decryptedData = await decrypt(data.encryptedData, partitionKey, `${vaultId}:${doc.id}`);
+              } catch {
+                decryptedData = null;
+              }
+            }
+
+            // Tier 2: Legacy signature-derived partition key
+            if (!decryptedData && combinedSignature) {
               try {
                 const partitionKey = await derivePartitionKey(combinedSignature, itemPartition, vaultConfig.salt);
                 decryptedData = await decrypt(data.encryptedData, partitionKey, `${vaultId}:${doc.id}`);
-              } catch (hkdfErr) {
-                // Fail silently and fallback to PBKDF2 Master Key
+              } catch {
                 decryptedData = null;
               }
             }
             
-            // 2. Fallback to master decryptionKey (PBKDF2 Master Session Key)
+            // Tier 3: Master DEK / session key fallback
             if (!decryptedData) {
               decryptedData = await decrypt(data.encryptedData, encryptionKey, `${vaultId}:${doc.id}`);
             }
@@ -5275,6 +5769,63 @@ function VaultMain({
     setIsSidebarOpen(false);
   };
 
+  const handleSortChange = (newField: SortField) => {
+    if (sortField === newField) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(newField);
+      setSortDirection(newField === 'name' || newField === 'expiration' ? 'asc' : 'desc');
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedItemIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    setSelectedItemIds(filteredItems.map(i => i.id));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedItemIds([]);
+  };
+
+  const handleOpenDrawer = (item: DecryptedItem) => {
+    setActiveDrawerItem(item);
+    setIsDrawerOpen(true);
+  };
+
+  const handleOpenSingleShare = (item: DecryptedItem) => {
+    setShareTargetItem(item);
+    setShareTargetItems([]);
+    setIsItemShareModalOpen(true);
+  };
+
+  const handleOpenBulkShare = () => {
+    const selected = items.filter(i => selectedItemIds.includes(i.id));
+    if (selected.length === 0) return;
+    setShareTargetItem(null);
+    setShareTargetItems(selected);
+    setIsItemShareModalOpen(true);
+  };
+
+  const handleExportSelected = () => {
+    const selected = items.filter(i => selectedItemIds.includes(i.id));
+    if (selected.length === 0) return;
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(selected, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", `vault_selected_export_${Date.now()}.json`);
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+    window.dispatchEvent(new CustomEvent('app-notify', {
+      detail: { message: `Exported ${selected.length} records successfully!`, type: 'success' }
+    }));
+  };
+
   const filteredItems = items.filter(it => {
     // If bereavement simulation is active, only show legacy records that spouse can access (e.g. spouse role permitted)
     if (isBereavementSimulated) {
@@ -5284,12 +5835,50 @@ function VaultMain({
       }
     }
 
-    const matchType = filter === 'all' 
-      ? it.type !== 'life_event' 
-      : it.type === filter;
-    const matchSearch = it.name.toLowerCase().includes(search.toLowerCase()) || 
-                       it.institution?.toLowerCase().includes(search.toLowerCase());
+    // Quick filter override (from stats bar)
+    if (activeQuickFilter === 'urgent') {
+      if (!getAssetExpirationStatus(it).isWithin30Days) return false;
+    } else if (activeQuickFilter === 'missing_beneficiary') {
+      if (it.beneficiary && it.beneficiary.trim().length > 0) return false;
+    }
+
+    let matchType = true;
+    if (filter === 'all') {
+      matchType = it.type !== 'life_event';
+    } else if (filter === 'expiring_soon') {
+      matchType = getAssetExpirationStatus(it).isWithin30Days;
+    } else {
+      matchType = it.type === filter;
+    }
+
+    const s = search.toLowerCase();
+    const matchSearch = !search || 
+      it.name.toLowerCase().includes(s) || 
+      it.institution?.toLowerCase().includes(s) ||
+      it.beneficiary?.toLowerCase().includes(s) ||
+      it.policyNumber?.toLowerCase().includes(s) ||
+      it.accountNumber?.toLowerCase().includes(s) ||
+      it.notes?.toLowerCase().includes(s);
+
     return matchType && matchSearch;
+  }).sort((a, b) => {
+    let cmp = 0;
+    if (sortField === 'name') {
+      cmp = a.name.localeCompare(b.name);
+    } else if (sortField === 'value') {
+      cmp = getItemMonetaryValue(a) - getItemMonetaryValue(b);
+    } else if (sortField === 'institution') {
+      cmp = (a.institution || '').localeCompare(b.institution || '');
+    } else if (sortField === 'type') {
+      cmp = a.type.localeCompare(b.type);
+    } else if (sortField === 'expiration') {
+      const aExp = getAssetExpirationStatus(a).mostUrgentEvent?.targetDate?.getTime() || 9999999999999;
+      const bExp = getAssetExpirationStatus(b).mostUrgentEvent?.targetDate?.getTime() || 9999999999999;
+      cmp = aExp - bExp;
+    } else {
+      cmp = (a.updatedAt || 0) - (b.updatedAt || 0);
+    }
+    return sortDirection === 'asc' ? cmp : -cmp;
   });
 
   const isOwner = userId === vaultId || 
@@ -5353,6 +5942,16 @@ function VaultMain({
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] pl-3 mb-4 mt-2">Vault Categories</p>
           <NavItem key="nav-all" active={filter === 'all'} label="Everything" icon={<Shield className="h-4 w-4" />} onClick={() => selectFilter('all')} count={items.length} />
+          {items.some(i => getAssetExpirationStatus(i).isWithin30Days) && (
+            <NavItem 
+              key="nav-expiring_soon" 
+              active={filter === 'expiring_soon'} 
+              label="Expiring &amp; Due (<30d)" 
+              icon={<AlertTriangle className="h-4 w-4 text-red-400 animate-pulse" />} 
+              onClick={() => selectFilter('expiring_soon')} 
+              count={items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length} 
+            />
+          )}
           <NavItem key="nav-credit" active={filter === 'credit'} label="Cards & Credit" icon={<CreditCard className="h-4 w-4" />} onClick={() => selectFilter('credit')} count={items.filter(i => i.type === 'credit').length} />
           <NavItem key="nav-bank" active={filter === 'bank'} label="Banking" icon={<Landmark className="h-4 w-4" />} onClick={() => selectFilter('bank')} count={items.filter(i => i.type === 'bank').length} />
           <NavItem key="nav-brokerage" active={filter === 'brokerage'} label="Brokerage & Growth" icon={<RefreshCw className="h-4 w-4" />} onClick={() => selectFilter('brokerage')} count={items.filter(i => i.type === 'brokerage').length} />
@@ -6312,6 +6911,26 @@ function VaultMain({
                     All Types ({items.length})
                   </button>
 
+                  {items.some(i => getAssetExpirationStatus(i).isWithin30Days) && (
+                    <button
+                      type="button"
+                      onClick={() => selectFilter('expiring_soon')}
+                      className={cn(
+                        "px-2.5 py-1 text-[9px] font-mono font-bold uppercase tracking-wider rounded-full border transition-all cursor-pointer flex items-center gap-1.5",
+                        filter === 'expiring_soon'
+                          ? "bg-red-600 text-white border-red-400 shadow-sm shadow-red-500/30 ring-2 ring-white/60 font-black"
+                          : "bg-red-950/70 text-red-200 border-red-500/50 hover:bg-red-900 hover:text-white"
+                      )}
+                      title={`Filter vault to items expiring or due within 30 days (${items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length})`}
+                    >
+                      <span className="relative flex h-1.5 w-1.5 shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                      </span>
+                      <span>Expiring Soon ({items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length})</span>
+                    </button>
+                  )}
+
                   {Array.from(new Set<string>(items.map(i => (i.type || 'other') as string))).map((typeKey: string) => {
                     const count = items.filter(i => (i.type || 'other') === typeKey).length;
                     const isActive = filter === typeKey;
@@ -6338,36 +6957,119 @@ function VaultMain({
                 </div>
               </div>
 
-              <motion.div 
-                variants={vaultStaggerContainer}
-                initial="hidden"
-                animate="show"
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
-                {filteredItems.map(item => (
-                  <motion.div 
-                    key={item.id} 
-                    variants={vaultCardItemVariant}
-                    className="relative overflow-hidden rounded-apex-lg"
+              {/* Executive Portfolio Dashboard & View Controls */}
+              <AssetPortfolioStats
+                items={items}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                onSortChange={handleSortChange}
+                isSelectionMode={isSelectionMode}
+                onToggleSelectionMode={() => {
+                  setIsSelectionMode(prev => !prev);
+                  if (isSelectionMode) setSelectedItemIds([]);
+                }}
+                selectedCount={selectedItemIds.length}
+                activeQuickFilter={activeQuickFilter}
+                onQuickFilterChange={setActiveQuickFilter}
+              />
+
+              {/* 30-Day Critical Expiration, Premium & Maturity Alert Banner */}
+              {items.some(i => getAssetExpirationStatus(i).isWithin30Days) && filter !== 'expiring_soon' && (
+                <div className="p-4 bg-red-950/30 border border-red-500/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left shadow-lg backdrop-blur-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-red-900/50 border border-red-500/50 rounded-xl text-red-200 shrink-0">
+                      <AlertTriangle className="h-5 w-5 text-red-400 animate-pulse" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black text-red-100 uppercase tracking-wider">
+                        Vault Timeline Alert: {items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length} {items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length === 1 ? 'Asset Requires' : 'Assets Require'} Immediate Attention
+                      </h5>
+                      <p className="text-[11px] text-red-300/85 mt-0.5 leading-relaxed font-sans">
+                        Assets with expiration dates, insurance premiums, collection deadlines, or maturity dates within 30 days are flagged with red alert badges.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => selectFilter('expiring_soon')}
+                    className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white text-[10px] font-mono font-black uppercase tracking-wider rounded-lg shrink-0 border border-red-400 shadow-md active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
                   >
-                    {/* Decryption laser scan sweep */}
+                    <span>View {items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length} Urgent {items.filter(i => getAssetExpirationStatus(i).isWithin30Days).length === 1 ? 'Item' : 'Items'}</span>
+                    <ChevronRight className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Dynamic View Mode Renderer */}
+              {viewMode === 'table' ? (
+                <AssetTableView
+                  items={filteredItems}
+                  selectedItemIds={selectedItemIds}
+                  onToggleSelect={handleToggleSelect}
+                  onSelectAll={handleSelectAll}
+                  onDeselectAll={handleDeselectAll}
+                  onOpenDrawer={handleOpenDrawer}
+                  onEdit={(item) => { setEditingItem(item); setIsAddModalOpen(true); }}
+                  onShare={handleOpenSingleShare}
+                  isSelectionMode={isSelectionMode}
+                />
+              ) : viewMode === 'grouped' ? (
+                <AssetGroupedView
+                  items={filteredItems}
+                  onOpenDrawer={handleOpenDrawer}
+                  onEdit={(item) => { setEditingItem(item); setIsAddModalOpen(true); }}
+                  onShare={handleOpenSingleShare}
+                  onAddInPillar={() => { setEditingItem(null); setIsAddModalOpen(true); }}
+                  selectedItemIds={selectedItemIds}
+                  onToggleSelect={handleToggleSelect}
+                  isSelectionMode={isSelectionMode}
+                />
+              ) : viewMode === 'timeline' ? (
+                <AssetTimelineView
+                  items={items}
+                  onOpenDrawer={handleOpenDrawer}
+                  onEdit={(item) => { setEditingItem(item); setIsAddModalOpen(true); }}
+                  onShare={handleOpenSingleShare}
+                />
+              ) : (
+                <motion.div 
+                  variants={vaultStaggerContainer}
+                  initial="hidden"
+                  animate="show"
+                  className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                >
+                  {filteredItems.map(item => (
                     <motion.div 
-                      initial={{ top: "-100%" }}
-                      animate={{ top: "105%" }}
-                      transition={{ delay: 0.25, duration: 0.8, ease: "easeInOut" }}
-                      className="absolute inset-x-0 h-[2px] bg-indigo-500 opacity-80 z-30 pointer-events-none shadow-[0_0_8px_#6366f1,0_0_15px_#6366f1]"
-                    />
-                    <VaultCard 
-                      item={item as DecryptedItem} 
-                      vaultId={vaultId}
-                      userId={userId}
-                      encryptionKey={encryptionKey}
-                      onFilterType={(type) => selectFilter(type as any)}
-                      onEdit={() => { setEditingItem(item); setIsAddModalOpen(true); }} 
-                    />
-                  </motion.div>
-                ))}
-              </motion.div>
+                      key={item.id} 
+                      variants={vaultCardItemVariant}
+                      className="relative overflow-hidden rounded-apex-lg"
+                    >
+                      {/* Decryption laser scan sweep */}
+                      <motion.div 
+                        initial={{ top: "-100%" }}
+                        animate={{ top: "105%" }}
+                        transition={{ delay: 0.25, duration: 0.8, ease: "easeInOut" }}
+                        className="absolute inset-x-0 h-[2px] bg-indigo-500 opacity-80 z-30 pointer-events-none shadow-[0_0_8px_#6366f1,0_0_15px_#6366f1]"
+                      />
+                      <VaultCard 
+                        item={item as DecryptedItem} 
+                        vaultId={vaultId}
+                        userId={userId}
+                        encryptionKey={encryptionKey}
+                        onFilterType={(type) => selectFilter(type as any)}
+                        onEdit={() => { setEditingItem(item); setIsAddModalOpen(true); }} 
+                        onOpenDrawer={handleOpenDrawer}
+                        onShare={handleOpenSingleShare}
+                        isSelected={selectedItemIds.includes(item.id)}
+                        onToggleSelect={handleToggleSelect}
+                        isSelectionMode={isSelectionMode}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
             </div>
           ) : (
             <div className="text-center py-20 bg-slate-900/50 border border-dashed border-slate-800 rounded-xl">
@@ -6420,6 +7122,8 @@ function VaultMain({
            userId={userId} 
            vaultId={vaultId}
            encryptionKey={encryptionKey}
+           dekHkdfBase={dekHkdfBase}
+           partitionKeyMap={partitionKeyMap}
            combinedSignature={combinedSignature}
            salt={vaultConfig.salt}
            defaultType={filter}
@@ -6434,6 +7138,7 @@ function VaultMain({
         <ShareModal 
           vaultId={vaultId} 
           userId={userId} 
+          dekHkdfBase={dekHkdfBase}
           onClose={() => setIsShareModalOpen(false)} 
         />
       )}
@@ -6451,6 +7156,8 @@ function VaultMain({
       {isAuditModalOpen && (
         <AuditModal 
           vaultId={vaultId}
+          dekHkdfBase={dekHkdfBase}
+          vaultConfig={vaultConfig}
           onClose={() => setIsAuditModalOpen(false)}
         />
       )}
@@ -6461,6 +7168,7 @@ function VaultMain({
           userId={userId}
           vaultConfig={vaultConfig}
           combinedSignature={combinedSignature}
+          dekHkdfBase={dekHkdfBase}
           onClose={() => setIsSettingsModalOpen(false)}
           onReset={onLock}
           idleTimeoutMins={idleTimeoutMins}
@@ -6598,6 +7306,43 @@ function VaultMain({
           </div>
         </div>
       )}
+
+      {/* Competitor-Beating Slide-Over Asset Detail Drawer */}
+      <AssetDrawer
+        item={activeDrawerItem}
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onEdit={(item) => {
+          setIsDrawerOpen(false);
+          setEditingItem(item);
+          setIsAddModalOpen(true);
+        }}
+        onShare={(item) => {
+          handleOpenSingleShare(item);
+        }}
+        userId={userId}
+        vaultId={vaultId}
+      />
+
+      {/* Asset Granular & Bulk Share Modal */}
+      <AssetItemShareModal
+        item={shareTargetItem}
+        items={shareTargetItems}
+        isOpen={isItemShareModalOpen}
+        onClose={() => setIsItemShareModalOpen(false)}
+        vaultId={vaultId}
+        userId={userId}
+        vaultConfig={vaultConfig}
+        encryptionKey={encryptionKey}
+      />
+
+      {/* Floating Batch Operations Bar */}
+      <AssetBatchBar
+        selectedCount={selectedItemIds.length}
+        onShareSelected={handleOpenBulkShare}
+        onExportSelected={handleExportSelected}
+        onDeselectAll={handleDeselectAll}
+      />
     </div>
   );
 }
@@ -6607,6 +7352,7 @@ function SettingsModal({
   userId, 
   vaultConfig, 
   combinedSignature, 
+  dekHkdfBase: _dekHkdfBase,
   onClose, 
   onReset,
   idleTimeoutMins,
@@ -6616,11 +7362,44 @@ function SettingsModal({
   userId: string, 
   vaultConfig: VaultConfig, 
   combinedSignature: string | null, 
+  dekHkdfBase?: CryptoKey,
   onClose: () => void, 
   onReset: () => void,
   idleTimeoutMins: number,
   setIdleTimeoutMins: (val: number) => void
 }) {
+  const [_rekeyingHardware, _setRekeyingHardware] = useState(false);
+
+  // Claim 14: Hardware-bound rekeying handler
+  const _handleBindHardwareKey = async () => {
+    if (!combinedSignature) {
+      notify("Active combined signature required to re-key vault.", "error");
+      return;
+    }
+    _setRekeyingHardware(true);
+    try {
+      const prf = await getWebAuthnPRFOutputForNewCredential(auth.currentUser?.email || 'user@whyor.io');
+      const updated = await rekeyVaultWithHardwareAuthenticator(
+        combinedSignature,
+        vaultConfig.argonPbkdfSaltB64 || '',
+        vaultConfig.wrappedDEK || '',
+        vaultConfig.wrappedDEKIv || '',
+        prf.prfOutput
+      );
+      await updateDoc(doc(db, 'vaults', vaultId, 'vault', 'config'), {
+        ...updated,
+        webauthnPrfCredentialId: prf.credentialId,
+        webauthnPrfSaltB64: btoa(String.fromCharCode(...new Uint8Array(prf.prfSalt))),
+        usedPRFAtCreation: true,
+      } as any);
+      notify("Hardware authenticator successfully bound to Vault Key (Claim 14)!", "success");
+    } catch (e: any) {
+      console.error(e);
+      notify(e.message || "Hardware binding failed.", "error");
+    } finally {
+      _setRekeyingHardware(false);
+    }
+  };
   const [loading, setLoading] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -7677,6 +8456,11 @@ interface VaultCardProps {
   userId: string;
   encryptionKey: CryptoKey;
   onFilterType?: (type: string) => void;
+  onOpenDrawer?: (item: DecryptedItem) => void;
+  onShare?: (item: DecryptedItem) => void;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
+  isSelectionMode?: boolean;
 }
 
 const EXCEL_HEADERS = [
@@ -7684,6 +8468,7 @@ const EXCEL_HEADERS = [
   "Username", "Password", "URL", "Notes", "Account or Card Number", "Routing Number", 
   "Expiry (MM/YY)", "CVV", "PIN", "Credit Limit", "Current Balance or Value", 
   "Property Address", "Policy Number", "Insurance Carrier", "Coverage Amount",
+  "Expiration Date", "Premium Due Date", "Maturity Date", "Collection Date",
   "Patent Title", "Patent App Number", "Patent Filing Date", "Inventors", "Jurisdiction", "Patent Status", "Abstract", "Claims", "Patent Agent",
   "Crypto Type", "Blockchain", "Wallet Address", "Seed Phrase", "Private Key", "Derivation Path",
   "Recovery Category", "Serial UID", "Pin", "Rescue Backup Codes", "Instructions"
@@ -7730,6 +8515,10 @@ const mapItemToRow = (item: DecryptedItem) => ({
   "Policy Number": item.policyNumber || "",
   "Insurance Carrier": item.carrier || "",
   "Coverage Amount": item.coverageAmount || "",
+  "Expiration Date": item.expirationDate || "",
+  "Premium Due Date": item.premiumDueDate || "",
+  "Maturity Date": item.maturityDate || "",
+  "Collection Date": item.collectionDate || "",
   "Patent Title": item.patentTitle || "",
   "Patent App Number": item.patentAppNumber || "",
   "Patent Filing Date": item.patentFilingDate || "",
@@ -7778,6 +8567,10 @@ const mapRowToItem = (row: any): Partial<DecryptedItem> => {
     policyNumber: String(row["Policy Number"] || ""),
     carrier: String(row["Insurance Carrier"] || ""),
     coverageAmount: type === 'insurance' ? parseFloat(row["Coverage Amount"] || row["Current Balance or Value"]) : undefined,
+    expirationDate: String(row["Expiration Date"] || ""),
+    premiumDueDate: String(row["Premium Due Date"] || ""),
+    maturityDate: String(row["Maturity Date"] || ""),
+    collectionDate: String(row["Collection Date"] || ""),
     patentTitle: String(row["Patent Title"] || ""),
     patentAppNumber: String(row["Patent App Number"] || ""),
     patentFilingDate: String(row["Patent Filing Date"] || ""),
@@ -8082,7 +8875,18 @@ interface AuditLogEntry {
   details: string | null;
 }
 
-function AuditModal({ vaultId, onClose }: { vaultId: string, onClose: () => void }) {
+function AuditModal({ vaultId, dekHkdfBase, vaultConfig, onClose }: { vaultId: string, dekHkdfBase?: CryptoKey, vaultConfig?: VaultConfig, onClose: () => void }) {
+  const [_chainIntegrity, setChainIntegrity] = useState<{ checked: boolean; valid: boolean; merkleRoot?: string }>({ checked: false, valid: true });
+
+  useEffect(() => {
+    if (dekHkdfBase) {
+      verifyChainIntegrity(vaultId, vaultConfig?.auditMerkleRoot ?? null).then(res => {
+        setChainIntegrity({ checked: true, valid: res.intact, merkleRoot: res.recomputedRoot });
+      }).catch(err => {
+        console.warn('Chain integrity verification error:', err);
+      });
+    }
+  }, [vaultId, dekHkdfBase, vaultConfig?.auditMerkleRoot]);
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -8513,7 +9317,19 @@ function ShieldAlertIcon({ className }: { className?: string }) {
   );
 }
 
-function VaultCard({ item, onEdit, vaultId, userId, encryptionKey, onFilterType }: VaultCardProps) {
+function VaultCard({ 
+  item, 
+  onEdit, 
+  vaultId, 
+  userId, 
+  encryptionKey, 
+  onFilterType,
+  onOpenDrawer,
+  onShare,
+  isSelected,
+  onToggleSelect,
+  isSelectionMode
+}: VaultCardProps) {
   const [showSensitive, setShowSensitive] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -8637,46 +9453,117 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey, onFilterType 
     }
   };
 
+  const expirationStatus = getAssetExpirationStatus(item);
+
   return (
     <motion.div 
       layout
       className={cn(
         "bg-slate-900 border border-slate-800 border-l-4 rounded-xl shadow-lg flex flex-col group transition-all hover:bg-slate-900/90 hover:border-slate-700/85 overflow-hidden",
-        colors[item.type as keyof typeof colors] || colors.other
+        colors[item.type as keyof typeof colors] || colors.other,
+        expirationStatus.isWithin30Days && "border-l-red-500 shadow-red-500/10 ring-1 ring-red-500/30"
       )}
     >
       <div className="p-5 flex-1 pb-1 text-left">
-        <div className="flex justify-between items-start mb-2">
-           <AssetBadge 
-             type={item.type} 
-             variant="glow"
-             onClick={onFilterType ? () => onFilterType(item.type) : undefined}
-             title={onFilterType ? `Click badge to filter vault by ${getAssetTypeMeta(item.type).label}` : undefined}
-           />
-           {isOwner && (
-             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-               <button onClick={onEdit} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><Edit3 className="h-3.5 w-3.5" /></button>
-               <button 
-                 onClick={() => {
-                   setDeleteConfirmText('');
-                   setJustification('');
-                   setIsDeleting(true);
-                 }} 
-                 className="p-1.5 hover:bg-rose-950/30 rounded-lg text-rose-400 hover:text-rose-300 transition-colors"
+        <div className="flex justify-between items-start mb-2 gap-2">
+           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+             {isSelectionMode && onToggleSelect && (
+               <button
+                 type="button"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   onToggleSelect(item.id);
+                 }}
+                 className="p-1 mr-1 text-slate-400 hover:text-white cursor-pointer"
+                 title="Select asset"
                >
-                 <Trash2 className="h-3.5 w-3.5" />
+                 {isSelected ? (
+                   <CheckSquare className="w-4 h-4 text-indigo-400" />
+                 ) : (
+                   <Square className="w-4 h-4 text-slate-600" />
+                 )}
                </button>
-             </div>
-           )}
+             )}
+             <AssetBadge 
+               type={item.type} 
+               variant="glow"
+               isExpiring={expirationStatus.isWithin30Days}
+               onClick={onFilterType ? () => onFilterType(item.type) : undefined}
+               title={onFilterType ? `Click badge to filter vault by ${getAssetTypeMeta(item.type).label}` : undefined}
+             />
+             <AssetExpirationBadge item={item} variant="badge" />
+           </div>
+           <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+             {onOpenDrawer && (
+               <button 
+                 type="button"
+                 onClick={(e) => { e.stopPropagation(); onOpenDrawer(item); }} 
+                 className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-indigo-300 transition-colors" 
+                 title="Open Detailed Sheet"
+               >
+                 <Eye className="h-3.5 w-3.5" />
+               </button>
+             )}
+             {onShare && (
+               <button 
+                 type="button"
+                 onClick={(e) => { e.stopPropagation(); onShare(item); }} 
+                 className="p-1.5 hover:bg-indigo-950/50 rounded-lg text-slate-400 hover:text-indigo-400 transition-colors" 
+                 title="Share Asset"
+               >
+                 <Share2 className="h-3.5 w-3.5" />
+               </button>
+             )}
+             {isOwner && (
+               <>
+                 <button onClick={onEdit} className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors" title="Edit Asset Record"><Edit3 className="h-3.5 w-3.5" /></button>
+                 <button 
+                   onClick={() => {
+                     setDeleteConfirmText('');
+                     setJustification('');
+                     setIsDeleting(true);
+                   }} 
+                   className="p-1.5 hover:bg-rose-950/30 rounded-lg text-rose-400 hover:text-rose-300 transition-colors"
+                   title="Archive / Delete Asset"
+                 >
+                   <Trash2 className="h-3.5 w-3.5" />
+                 </button>
+               </>
+             )}
+           </div>
         </div>
 
-        <div className="mb-4">
+        <div 
+          className={cn("mb-3", onOpenDrawer && "cursor-pointer group/title")}
+          onClick={onOpenDrawer ? () => onOpenDrawer(item) : undefined}
+        >
            {item.institution && <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.12em] mb-1 leading-none">{item.institution}</p>}
-           <h4 className="font-extrabold text-white text-lg tracking-tight leading-tight line-clamp-1">{item.name}</h4>
+           <h4 className="font-extrabold text-white text-lg tracking-tight leading-tight line-clamp-1 group-hover/title:text-indigo-300 transition-colors">{item.name}</h4>
         </div>
+
+        {/* Proactive 30-Day Alert Banner on Collapsed Card */}
+        {expirationStatus.isWithin30Days && !isExpanded && (
+          <div className="mb-3 p-2.5 bg-red-950/45 border border-red-500/50 rounded-lg flex items-center justify-between gap-2 text-[10px] shadow-sm">
+            <span className="flex items-center gap-1.5 text-red-200 font-bold min-w-0 truncate">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
+              <span className="truncate">{expirationStatus.mostUrgentEvent?.label} Alert</span>
+            </span>
+            <span className="font-mono font-black text-red-100 bg-red-900/90 px-2 py-0.5 rounded border border-red-500/60 shrink-0 text-[8.5px] tracking-wider uppercase shadow-xs">
+              {expirationStatus.mostUrgentEvent?.badgeText}
+            </span>
+          </div>
+        )}
 
          {isExpanded ? (
            <div className="space-y-4 pt-4 border-t border-slate-800/80">
+          {/* Detailed Timeline Schedule */}
+          {expirationStatus.hasTrackedDate && (
+            <AssetExpirationBadge item={item} variant="detailed" />
+          )}
+
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <div className="flex items-center gap-1.5 bg-slate-950/50 px-2 py-1 rounded border border-slate-800/80 text-[8px] font-bold text-slate-400 uppercase tracking-widest">
               <ShieldCheck className="h-2.5 w-2.5 text-emerald-400" />
@@ -8897,6 +9784,8 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey, onFilterType 
                 <>
                   <Field label="Account ID" value={item.accountNumber} show={showSensitive} onCopy={() => copy(item.accountNumber, 'account ID')} icon={<Cpu className="h-2.5 w-2.5" />} />
                   <Field label="Web Login" value={item.username} show={showSensitive} onCopy={() => copy(item.username, 'username')} />
+                  {item.maturityDate && <Field label="Maturity Date" value={item.maturityDate} show={true} onCopy={() => copy(item.maturityDate, 'maturity date')} icon={<Clock className="h-2.5 w-2.5 text-indigo-400" />} />}
+                  {item.expirationDate && <Field label="Renewal/Expiration" value={item.expirationDate} show={true} onCopy={() => copy(item.expirationDate, 'expiration date')} icon={<Clock className="h-2.5 w-2.5 text-indigo-400" />} />}
                 </>
               ) : item.type === 'realestate' ? (
                 <>
@@ -8906,6 +9795,9 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey, onFilterType 
                 <>
                    <Field label="Policy Protocol #" value={item.policyNumber} show={true} onCopy={() => copy(item.policyNumber, 'policy number')} icon={<ShieldCheck className="h-2.5 w-2.5" />} />
                    {item.carrier && <Field label="Carrier" value={item.carrier} show={true} onCopy={() => copy(item.carrier, 'carrier')} icon={<Truck className="h-2.5 w-2.5" />} />}
+                   {item.expirationDate && <Field label="Policy Expiration" value={item.expirationDate} show={true} onCopy={() => copy(item.expirationDate, 'expiration date')} icon={<Clock className="h-2.5 w-2.5 text-cyan-400" />} />}
+                   {item.premiumDueDate && <Field label="Premium Due Date" value={item.premiumDueDate} show={true} onCopy={() => copy(item.premiumDueDate, 'premium due date')} icon={<RefreshCw className="h-2.5 w-2.5 text-cyan-400" />} />}
+                   {item.maturityDate && <Field label="Policy Maturity" value={item.maturityDate} show={true} onCopy={() => copy(item.maturityDate, 'maturity date')} icon={<Calendar className="h-2.5 w-2.5 text-cyan-400" />} />}
                 </>
               ) : item.type === 'patent' ? (
                 <>
@@ -8944,6 +9836,8 @@ function VaultCard({ item, onEdit, vaultId, userId, encryptionKey, onFilterType 
                     <Field label="Reference ID" value={item.identifierReference} show={true} onCopy={() => copy(item.identifierReference, 'reference')} icon={<ClipboardList className="h-2.5 w-2.5 font-mono" />} />
                     <Field label="Filing Date" value={item.effectiveDate} show={true} onCopy={() => copy(item.effectiveDate, 'date')} icon={<Table className="h-2.5 w-2.5" />} />
                   </div>
+                  {item.collectionDate && <Field label="Collection / Retrieval Due" value={item.collectionDate} show={true} onCopy={() => copy(item.collectionDate, 'collection date')} icon={<Archive className="h-2.5 w-2.5 text-fuchsia-400" />} />}
+                  {item.expirationDate && <Field label="Agreement Expiration" value={item.expirationDate} show={true} onCopy={() => copy(item.expirationDate, 'expiration date')} icon={<Clock className="h-2.5 w-2.5 text-fuchsia-400" />} />}
                   <Field label="Physical Location" value={item.locationCustodian} show={true} onCopy={() => copy(item.locationCustodian, 'location')} icon={<Home className="h-2.5 w-2.5" />} />
                   <Field label="Parties Involved" value={item.parties} show={true} onCopy={() => copy(item.parties, 'parties')} icon={<Users className="h-2.5 w-2.5" />} />
                   {item.assetDescription && (
@@ -9377,6 +10271,8 @@ function EntryModal({
   userId, 
   vaultId, 
   encryptionKey, 
+  dekHkdfBase,
+  partitionKeyMap,
   combinedSignature,
   salt,
   defaultType,
@@ -9386,6 +10282,8 @@ function EntryModal({
   userId: string, 
   vaultId: string, 
   encryptionKey: CryptoKey, 
+  dekHkdfBase?: CryptoKey,
+  partitionKeyMap?: Record<string, CryptoKey>,
   combinedSignature: string | null,
   salt: string,
   defaultType?: string,
@@ -9423,6 +10321,10 @@ function EntryModal({
       policyNumber: '',
       carrier: '',
       coverageAmount: 0,
+      premiumDueDate: '',
+      maturityDate: '',
+      collectionDate: '',
+      expirationDate: '',
       username: '',
       password: '',
       url: '',
@@ -9569,7 +10471,17 @@ function EntryModal({
       const targetId = item?.id || doc(collection(db, 'vaults', vaultId, 'items')).id;
       
       let encryptionKeyToUse = encryptionKey;
-      if (combinedSignature) {
+      if (partitionKeyMap && partitionKeyMap[itemPartition]) {
+        encryptionKeyToUse = partitionKeyMap[itemPartition];
+      } else if (dekHkdfBase) {
+        encryptionKeyToUse = await derivePartitionSubKeyV2({
+          dekHkdfBase,
+          partitionId: itemPartition,
+          ownerUid: vaultId,
+          version: 1,
+          salt: new TextEncoder().encode(salt)
+        });
+      } else if (combinedSignature) {
         encryptionKeyToUse = await derivePartitionKey(combinedSignature, itemPartition, salt);
       }
 
@@ -9875,7 +10787,71 @@ function EntryModal({
   );
 }
 
-function ShareModal({ vaultId, userId, onClose }: { vaultId: string, userId: string, onClose: () => void }) {
+function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string, userId: string, dekHkdfBase?: CryptoKey, onClose: () => void }) {
+  const [_enrolledMembers, setEnrolledMembers] = useState<any[]>([]);
+  const [_memberTokens, setMemberTokens] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    // Listen for enrolled members with public keys
+    const memCol = collection(db, 'vaults', vaultId, 'members');
+    const unsubMem = fbOnSnapshot(memCol, (snap) => {
+      setEnrolledMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, () => {});
+
+    // Listen for issued share tokens
+    const tokCol = collection(db, 'vaults', vaultId, 'shareTokens');
+    const unsubTok = fbOnSnapshot(tokCol, (snap) => {
+      const map: Record<string, string[]> = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        const memUid = data.memberUid;
+        const part = data.partitionId;
+        if (memUid && part) {
+          if (!map[memUid]) map[memUid] = [];
+          map[memUid].push(part);
+        }
+      });
+      setMemberTokens(map);
+    }, () => {});
+
+    return () => { unsubMem(); unsubTok(); };
+  }, [vaultId]);
+
+  const _togglePartitionGrant = async (member: any, partitionId: string) => {
+    if (!dekHkdfBase) {
+      notify("Master key HKDF base not loaded in this session.", "error");
+      return;
+    }
+    const currentGranted = (_memberTokens[member.uid] || []).includes(partitionId);
+    const tokenDocId = `${partitionId}__${member.uid}`;
+    const tokenRef = doc(db, 'vaults', vaultId, 'shareTokens', tokenDocId);
+
+    try {
+      if (currentGranted) {
+        await fbDeleteDoc(tokenRef);
+        notify(`Revoked ${partitionId} partition access for ${member.email}`, "info");
+      } else {
+        const rawPartitionKey = await derivePartitionSubKeyRawV2({
+          dekHkdfBase,
+          partitionId,
+          ownerUid: vaultId,
+          version: 1,
+          salt: new TextEncoder().encode('whyor-default-salt')
+        });
+        const token = await createShareToken(rawPartitionKey, partitionId, 1, member.publicKeyJwk);
+        await fbSetDoc(tokenRef, {
+          ...token,
+          memberUid: member.uid,
+          memberEmail: member.email,
+          grantedAt: Date.now()
+        });
+        notify(`Granted ${partitionId} partition access to ${member.email}`, "success");
+      }
+    } catch (err: any) {
+      console.error(err);
+      notify(err.message || "Failed to update partition token.", "error");
+    }
+  };
   const [email, setEmail] = useState('');
   const [members, setMembers] = useState<string[]>([]);
   const [owners, setOwners] = useState<string[]>([]);

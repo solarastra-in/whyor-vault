@@ -54,13 +54,15 @@ service cloud.firestore {
     // Admin Settings (e.g. for hashed password)
     match /admin_settings/{document} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if (isSignedIn() && resource == null) || isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     // System Settings Configuration
     match /system/config {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create: if (isSignedIn() && resource == null) || isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     // Vault central registry
@@ -114,14 +116,14 @@ service cloud.firestore {
         incoming().ownerId == existing().ownerId &&
         (
           isAdmin() ||
-          // Action: Update failed attempts, corruption, members, or owners list
-          incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails'])
+          // Action: Update failed attempts, corruption, members, or owners list, or sync Merkle root
+          incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails', 'auditMerkleRoot'])
           ||
           // Action: Reset vault (re-setup)
           incoming().diff(existing()).affectedKeys().hasAll(['signatureHash', 'salt'])
           ||
-          // Action: Rotate master key (creator/owner only)
-          (isOwner(vaultId) && incoming().diff(existing()).affectedKeys().hasOnly(['masterKeySalt', 'hashedMasterKey', 'hashedDuressKey', 'masterKeyFailedAttempts', 'encryptedSignatureEscrow', 'encryptedAnswersEscrow']))
+          // Action: Rotate master key or hardware re-key (creator/owner only)
+          (isOwner(vaultId) && incoming().diff(existing()).affectedKeys().hasOnly(['masterKeySalt', 'hashedMasterKey', 'hashedDuressKey', 'masterKeyFailedAttempts', 'encryptedSignatureEscrow', 'encryptedAnswersEscrow', 'auditMerkleRoot', 'wrappedDEK', 'wrappedDEKIv', 'webauthnPrfCredentialId', 'webauthnPrfSaltB64', 'usedPRFAtCreation']))
         );
 
       allow delete: if isOwner(vaultId) || isAdmin();
@@ -216,6 +218,19 @@ service cloud.firestore {
       allow create: if canWriteArchive();
       allow list, get: if canWriteArchive() || isAdmin();
       allow delete: if isOwner(vaultId) || isAdmin();
+    }
+
+    // Family Sharing Members (Claim 6)
+    match /vaults/{vaultId}/members/{memberId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (request.auth.uid == memberId || isOwner(vaultId) || isAdmin());
+      allow delete: if isOwner(vaultId) || isAdmin();
+    }
+
+    // Partition Share Tokens (Claim 6 / 24)
+    match /vaults/{vaultId}/shareTokens/{tokenId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner(vaultId) || isAdmin();
     }
 
     // User Profile (for activeVaultId pointer)

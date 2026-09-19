@@ -4,15 +4,27 @@ import { splitSecretKofN, reconstructSecretKofN, encodeKofNShareForKeycard, deco
 import { encodeCrockfordBase32, decodeCrockfordBase32 } from './localQr';
 
 describe('Claim 9: decoy duress vault', () => {
-  it('unlocks with the correct duress passphrase and produces a usable DEK', async () => {
+  it('unlocks with the correct duress passphrase and produces a usable DEK + HKDF base', async () => {
     const config = await enrollDuressVault('my-duress-passphrase', { partitionsToPopulate: ['personal_accounts'] });
-    const dek = await attemptDuressUnlock('my-duress-passphrase', config);
-    expect(dek).not.toBeNull();
+    const result = await attemptDuressUnlock('my-duress-passphrase', config);
+    expect(result).not.toBeNull();
 
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, dek!, new TextEncoder().encode('decoy content'));
-    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, dek!, ct);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, result!.dek, new TextEncoder().encode('decoy content'));
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, result!.dek, ct);
     expect(new TextDecoder().decode(decrypted)).toBe('decoy content');
+
+    // dekHkdfBase derives the same partition sub-keys a real vault would,
+    // so decoy-mode items can reuse the normal Claim 2 encryption path.
+    const { derivePartitionSubKeyV2 } = await import('./vaultKeys');
+    const partitionKey = await derivePartitionSubKeyV2({
+      dekHkdfBase: result!.dekHkdfBase,
+      partitionId: 'personal_accounts',
+      ownerUid: 'owner-1',
+      version: 1,
+      salt: new Uint8Array(16),
+    });
+    expect(partitionKey).toBeTruthy();
   });
 
   it('returns null (not a throw) for the wrong duress passphrase', async () => {

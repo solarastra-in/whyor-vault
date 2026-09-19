@@ -3,7 +3,7 @@ import { cn } from '../lib/utils';
 import { 
   CreditCard, Landmark, Sliders, Globe, Key, Shield, ShieldCheck, 
   Archive, FileText, ClipboardList, Database, Download, Trash2, 
-  Paperclip, RefreshCw, AlertOctagon, HelpCircle, Info
+  Paperclip, RefreshCw, AlertOctagon, HelpCircle, Info, Clock, Calendar, AlertTriangle
 } from 'lucide-react';
 import { Tooltip, InfoTooltip, FieldLabel } from './Tooltip';
 import AssetBadge from './AssetBadge';
@@ -374,6 +374,33 @@ export function EntryModalContent({
           placeholder="e.g. F984-Z762"
         />
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+            Bond / CD Maturity Date (Optional)
+          </label>
+          <input 
+            type="date"
+            value={formData.maturityDate || ''}
+            onChange={(e) => updateField('maturityDate', e.target.value)}
+            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-indigo-600 outline-none"
+          />
+          <p className="text-[9px] text-amber-400/80 mt-1">⚠️ Triggers RED alert badge 30 days prior to maturity</p>
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+            Review / Renewal Date (Optional)
+          </label>
+          <input 
+            type="date"
+            value={formData.expirationDate || ''}
+            onChange={(e) => updateField('expirationDate', e.target.value)}
+            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-indigo-600 outline-none"
+          />
+          <p className="text-[9px] text-slate-500 mt-1">Monitored in vault schedule</p>
+        </div>
+      </div>
     </div>
   );
 
@@ -477,6 +504,55 @@ export function EntryModalContent({
             className="w-full bg-slate-950 border border-slate-850 rounded px-4 py-3 text-sm text-white focus:border-sky-600 outline-none"
             placeholder="e.g. agent@metlife.com or (800) 555-0192"
           />
+        </div>
+      </div>
+
+      {/* Critical Expiration, Premium & Maturity Timeline */}
+      <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[10px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-sky-400" />
+            Insurance Timeline &amp; Alert Protocol
+          </span>
+          <span className="text-[9px] font-mono text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-500/30">
+            ⚠️ Turns RED 30 days before expiration, premium, or maturity
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+              Policy Expiration Date
+            </label>
+            <input 
+              type="date"
+              value={formData.expirationDate || ''}
+              onChange={(e) => updateField('expirationDate', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-sky-600 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+              Premium Payment Due Date
+            </label>
+            <input 
+              type="date"
+              value={formData.premiumDueDate || ''}
+              onChange={(e) => updateField('premiumDueDate', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-sky-600 outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+              Policy Maturity Date
+            </label>
+            <input 
+              type="date"
+              value={formData.maturityDate || ''}
+              onChange={(e) => updateField('maturityDate', e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-sky-600 outline-none"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -657,6 +733,33 @@ export function EntryModalContent({
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+            Collection / Scheduled Retrieval Date
+          </label>
+          <input 
+            type="date"
+            value={formData.collectionDate || ''} 
+            onChange={(e) => updateField('collectionDate', e.target.value)} 
+            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-cyan-600 outline-none" 
+          />
+          <p className="text-[9px] text-amber-400/80 mt-1">⚠️ Triggers RED alert badge 30 days prior to collection</p>
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left">
+            Agreement Expiration / Review Date
+          </label>
+          <input 
+            type="date"
+            value={formData.expirationDate || ''} 
+            onChange={(e) => updateField('expirationDate', e.target.value)} 
+            className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white font-mono focus:border-cyan-600 outline-none" 
+          />
+          <p className="text-[9px] text-amber-400/80 mt-1">⚠️ Triggers RED alert badge 30 days prior to expiration</p>
+        </div>
+      </div>
+
       <div>
         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 text-left">Key Related Parties (Comma-separated List)</label>
         <input 
@@ -796,13 +899,14 @@ export function EntryModalContent({
           />
         </div>
         <div>
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 text-left font-sans">Expiration Validity Date (Optional)</label>
+          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 text-left font-sans">Expiration Validity Date (Optional)</label>
           <input 
             type="date"
             value={formData.expirationDate || ''} 
             onChange={(e) => updateField('expirationDate', e.target.value)} 
-            className="w-full bg-slate-950 border border-slate-800 rounded px-4 py-3 text-sm text-white font-mono focus:border-purple-600" 
+            className="w-full bg-slate-950 border border-slate-800 rounded px-4 py-3 text-sm text-white font-mono focus:border-purple-600 outline-none" 
           />
+          <p className="text-[9px] text-amber-400/80 mt-1">⚠️ Triggers RED alert badge 30 days prior to expiration</p>
         </div>
       </div>
 

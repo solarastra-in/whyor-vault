@@ -228,6 +228,7 @@ export interface AssetBadgeProps {
   className?: string;
   onClick?: (e: React.MouseEvent) => void;
   title?: string;
+  isExpiring?: boolean;
 }
 
 export default function AssetBadge({
@@ -238,7 +239,8 @@ export default function AssetBadge({
   short = false,
   className,
   onClick,
-  title
+  title,
+  isExpiring = false
 }: AssetBadgeProps) {
   const meta = getAssetTypeMeta(type);
   const Icon = meta.icon;
@@ -249,7 +251,7 @@ export default function AssetBadge({
   return (
     <span
       onClick={onClick}
-      title={title || `${meta.label} Asset Classification`}
+      title={title || `${meta.label} Asset Classification${isExpiring ? ' (⚠️ Expiration Alert <30 Days)' : ''}`}
       className={cn(
         "inline-flex items-center gap-1.5 font-mono font-bold tracking-wider uppercase border select-none transition-all",
         // Padding & size based on variant
@@ -264,8 +266,11 @@ export default function AssetBadge({
         meta.badgeText,
         meta.badgeBorder,
         
+        // Alert overrides
+        isExpiring && "border-red-500/60 shadow-red-500/20",
+
         // Glow effect
-        variant === 'glow' && ["shadow-sm", meta.glowColor],
+        variant === 'glow' && ["shadow-sm", isExpiring ? "shadow-red-500/30" : meta.glowColor],
         
         // Interactive state
         isInteractive && [
@@ -281,9 +286,9 @@ export default function AssetBadge({
         <span 
           className={cn(
             "w-1.5 h-1.5 rounded-full shrink-0 shadow-sm",
-            meta.dotColor
+            isExpiring ? "bg-red-400 animate-pulse" : meta.dotColor
           )}
-          style={{ boxShadow: `0 0 6px ${meta.hexColor}aa` }}
+          style={{ boxShadow: isExpiring ? '0 0 8px #ef4444' : `0 0 6px ${meta.hexColor}aa` }}
         />
       )}
 

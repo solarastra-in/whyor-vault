@@ -42,6 +42,51 @@ function concatBytes(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
+// Claim 13: passphrase entropy enforcement at vault creation. Estimates the
+// entropy of a candidate secret in bits using a conservative
+// character-class-pool model (the same floor NIST SP 800-63B Appendix A
+// uses), discounted for repeated characters, and rejects secrets below a
+// threshold expressed in bits. This is deliberately independent of the KDF
+// parameters above: Argon2id/PBKDF2 slow down brute force per guess, but
+// cannot fix a low-entropy input -- a predictable answer produces a weak
+// vault no matter how many iterations wrap it, so this check runs before
+// any of that cascade.
+export const MIN_ANSWER_ENTROPY_BITS = 20;
+
+export function estimateEntropyBits(input: string): number {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return 0;
+  let poolSize = 0;
+  if (/[a-z]/.test(trimmed)) poolSize += 26;
+  if (/[A-Z]/.test(trimmed)) poolSize += 26;
+  if (/[0-9]/.test(trimmed)) poolSize += 10;
+  if (/[^a-zA-Z0-9]/.test(trimmed)) poolSize += 32;
+  if (poolSize === 0) poolSize = 1;
+  const uniqueChars = new Set(trimmed.split('')).size;
+  // Repetition penalty: "aaaaaa" (1 unique char over 6) scores near zero;
+  // fully non-repeating strings score at full length.
+  const repetitionPenalty = uniqueChars / trimmed.length;
+  return trimmed.length * Math.log2(poolSize) * repetitionPenalty;
+}
+
+export interface EntropyValidation {
+  valid: boolean;
+  bits: number;
+  error?: string;
+}
+
+export function validateAnswerEntropy(answer: string): EntropyValidation {
+  const bits = estimateEntropyBits(answer);
+  if (bits < MIN_ANSWER_ENTROPY_BITS) {
+    return {
+      valid: false,
+      bits,
+      error: `Too predictable (~${bits.toFixed(0)} bits; needs at least ${MIN_ANSWER_ENTROPY_BITS}). Use a longer or less guessable answer.`,
+    };
+  }
+  return { valid: true, bits };
+}
+
 export function generateSaltBytes(len = 16): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(len));
 }
@@ -281,4 +326,46 @@ export async function unlockV2Vault(
   rawDek.fill(0);
 
   return { dek, dekHkdfBase, usedPRF };
+}
+
+export interface RekeyResult {
+  wrappedDEK: string;
+  wrappedDEKIv: string;
+  usedPRF: boolean;
+}
+
+/**
+ * Claim 14 follow-through: lets a vault that was created without a WebAuthn
+ * hardware authenticator (Final KEK = Base KEK, the documented fallback)
+ * add one afterward, closing the "reduced security level" the app now
+ * surfaces to the owner as an advisory. Re-wraps the *existing* DEK under a
+ * new Final KEK that mixes in the freshly-enrolled PRF output -- the DEK's
+ * raw bytes never leave this function (unwrapped, immediately re-wrapped,
+ * then zeroed), and because the DEK itself is unchanged, every item, file,
+ * and partition key already derived from it stays valid. Only the outer
+ * wrapping changes.
+ */
+export async function rekeyVaultWithHardwareAuthenticator(
+  passphrase: string,
+  argonPbkdfSaltB64: string,
+  oldWrappedDEK: string,
+  oldWrappedDEKIv: string,
+  newPrfOutput: ArrayBuffer
+): Promise<RekeyResult> {
+  const saltBytes = b64ToBytes(argonPbkdfSaltB64);
+  const baseKEKBytes = await deriveBaseKEK(passphrase, saltBytes);
+
+  // Unwrap under the current (no-PRF) Final KEK == Base KEK.
+  const { key: oldFinalKEK } = await deriveFinalKEK(baseKEKBytes, undefined);
+  const ptBuf = await crypto.subtle.decrypt(
+    { name: AES, iv: b64ToBytes(oldWrappedDEKIv) }, oldFinalKEK, b64ToBytes(oldWrappedDEK)
+  );
+  const rawDek = new Uint8Array(ptBuf);
+
+  // Re-wrap under a new Final KEK that mixes in the newly-enrolled PRF output.
+  const { key: newFinalKEK, usedPRF } = await deriveFinalKEK(baseKEKBytes, newPrfOutput);
+  const { wrapped, iv } = await wrapDEK(rawDek, newFinalKEK);
+  rawDek.fill(0);
+
+  return { wrappedDEK: wrapped, wrappedDEKIv: iv, usedPRF };
 }

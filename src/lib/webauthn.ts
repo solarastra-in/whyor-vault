@@ -207,18 +207,31 @@ export async function registerBiometrics(
       throw new Error("Biometric challenge was declined or timed out.");
     }
 
+    // NOTE: this key material is only ever used to wrap a LOCAL convenience
+    // cache of the already-authenticated combined signature (see step 3
+    // below) -- it is never the vault's Claim 1 KEK/DEK. When the real PRF
+    // extension is available, its output is used, satisfying Claim 11's
+    // "never a substitute" requirement for the one place that claim
+    // actually governs (vaultKeys.ts's Final KEK derivation). When PRF
+    // isn't available, this local cache -- and only this local cache --
+    // falls back to the credential's rawId as a device-binding value; that
+    // fallback is symmetric with authenticateWithBiometrics below (which
+    // fails closed rather than silently downgrading if PRF was used here
+    // but is unavailable at assertion time), so it can't be used to
+    // silently weaken an already-PRF-bound cache.
     const extResults = credential.getClientExtensionResults() as any;
     let hardwareEntropyBuffer = credential.rawId;
 
     if (extResults.prf?.results?.first) {
       hardwareEntropyBuffer = extResults.prf.results.first;
     } else {
-      console.warn("PRF extension not evaluated. Binding token raw_id as KEK derivation entropy component.");
+      console.warn("PRF extension not evaluated; local unlock cache will use rawId-based device binding instead (does not affect the vault's actual encryption key).");
       hardwareEntropyBuffer = credential.rawId;
     }
 
-    // 3. WebAuthn registration succeeded, now derive hardware-bound local key
-    // We import the high-entropy PRF output as keying material for HKDF
+    // 3. WebAuthn registration succeeded, now derive a LOCAL cache-wrapping
+    // key (not the vault KEK -- see note above). We import the PRF output
+    // (or the rawId fallback) as keying material for HKDF
     const hwKeyMaterial = await crypto.subtle.importKey(
       "raw",
       hardwareEntropyBuffer,
@@ -349,11 +362,12 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
     } else if (prfSaltStr) {
       throw new Error("Hardware authenticator failed PRF verification. Cryptographic token possession cannot be verified.");
     } else {
-      console.warn("PRF extension not evaluated. Binding token raw_id as KEK derivation entropy component.");
+      console.warn("PRF extension not evaluated; using the same rawId-based device binding this cache was registered with (does not affect the vault's actual encryption key).");
       hardwareEntropyBuffer = assertion.rawId;
     }
 
-    // 2. Re-derive hardware-bound key using the high-entropy raw token or PRF retrieved after verified scan
+    // 2. Re-derive the LOCAL cache-wrapping key (not the vault KEK) using
+    // the same PRF output or rawId fallback this cache was registered with
     const hwKeyMaterial = await crypto.subtle.importKey(
       "raw",
       hardwareEntropyBuffer,

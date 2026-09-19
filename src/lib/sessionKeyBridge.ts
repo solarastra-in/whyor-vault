@@ -25,6 +25,17 @@ export interface SessionKeyConfigFields {
   webauthnPrfSaltB64?: string;
 }
 
+export interface SessionMaterial {
+  dek: CryptoKey;
+  // Claim 2: only present for v2 (kdfVersion === KDF_VERSION_CURRENT)
+  // vaults -- the HKDF base key partition sub-keys derive from. v1 vaults
+  // have no DEK (their session key IS the direct PBKDF2 output), so there
+  // is nothing to derive partition sub-keys from per Claim 2(a)'s "master
+  // DEK" requirement; callers fall back to the legacy signature-based
+  // derivePartitionKey() for those.
+  dekHkdfBase?: CryptoKey;
+}
+
 /**
  * v1 vaults (kdfVersion missing or 1): unchanged legacy path, single
  * PBKDF2-250k via crypto.ts's deriveKey(). Existing vaults keep working
@@ -35,10 +46,10 @@ export interface SessionKeyConfigFields {
  * declined PRF assertion is not fatal — it falls back to
  * Final KEK = Base KEK per Claim 14.
  */
-export async function deriveSessionKeyForConfig(
+export async function deriveSessionMaterialForConfig(
   secretSignature: string,
   config: SessionKeyConfigFields
-): Promise<CryptoKey> {
+): Promise<SessionMaterial> {
   if (config.kdfVersion === KDF_VERSION_CURRENT && config.argonPbkdfSaltB64 && config.wrappedDEK && config.wrappedDEKIv) {
     let prfOutput: ArrayBuffer | undefined;
     if (config.webauthnPrfCredentialId && config.webauthnPrfSaltB64) {
@@ -49,8 +60,20 @@ export async function deriveSessionKeyForConfig(
         console.warn('PRF re-assertion failed at unlock; falling back to passphrase-only KEK (Claim 14).', e);
       }
     }
-    const { dek } = await unlockV2Vault(secretSignature, config.argonPbkdfSaltB64, config.wrappedDEK, config.wrappedDEKIv, prfOutput);
-    return dek;
+    const { dek, dekHkdfBase } = await unlockV2Vault(secretSignature, config.argonPbkdfSaltB64, config.wrappedDEK, config.wrappedDEKIv, prfOutput);
+    return { dek, dekHkdfBase };
   }
-  return deriveKey(secretSignature, config.salt);
+  return { dek: await deriveKey(secretSignature, config.salt) };
+}
+
+/**
+ * Back-compat wrapper kept for existing callers/tests that only need the
+ * session key itself, not the partition-key HKDF base.
+ */
+export async function deriveSessionKeyForConfig(
+  secretSignature: string,
+  config: SessionKeyConfigFields
+): Promise<CryptoKey> {
+  const { dek } = await deriveSessionMaterialForConfig(secretSignature, config);
+  return dek;
 }

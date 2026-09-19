@@ -227,6 +227,49 @@ export async function decodeKofNShareFromKeycard(text: string): Promise<KofNShar
   return { k, n, x, data: decodeCrockfordBase32(dataStr) };
 }
 
+// Version tag stored in VaultConfig.shamirVersion for vaults using this
+// configurable engine (as opposed to the legacy fixed splitMasterKey/
+// reconstructMasterKey 2-of-3 shares, version 1 / absent).
+export const SHAMIR_VERSION_CURRENT = 2;
+// Default threshold used at vault creation unless the owner picks a
+// different (k, n) in the advanced recovery settings -- matches the
+// legacy engine's fixed 2-of-3 shape so existing UX/UI (three displayed
+// shares, a 2-share recovery drill) is unaffected by the engine swap.
+export const DEFAULT_SHAMIR_K = 2;
+export const DEFAULT_SHAMIR_N = 3;
+
+/**
+ * Splits a secret with the configurable k-of-n engine and returns the
+ * shares pre-encoded as printable keycard strings (Claim 18), in the same
+ * {share1, share2, ...} shape callers already use for the legacy 3-share
+ * UI. Only the first three encoded shares are named share1/2/3 for that
+ * UI; the full ordered list is also returned for n > 3 or n < 3 callers.
+ */
+export async function splitMasterKeyConfigurable(
+  key: string,
+  k: number = DEFAULT_SHAMIR_K,
+  n: number = DEFAULT_SHAMIR_N
+): Promise<{ shares: string[]; share1: string; share2: string; share3: string; k: number; n: number }> {
+  const rawShares = splitSecretKofN(key, k, n);
+  const encoded = await Promise.all(rawShares.map(s => encodeKofNShareForKeycard(s)));
+  return {
+    shares: encoded,
+    share1: encoded[0] || '',
+    share2: encoded[1] || '',
+    share3: encoded[2] || '',
+    k,
+    n,
+  };
+}
+
+/**
+ * Reconstructs a secret from >= k configurable-engine keycard strings.
+ */
+export async function reconstructMasterKeyConfigurable(shareStrings: string[]): Promise<string> {
+  const decoded = await Promise.all(shareStrings.map(s => decodeKofNShareFromKeycard(s)));
+  return reconstructSecretKofN(decoded);
+}
+
 export function reconstructMasterKey(anyTwoShares: string[]): string {
   if (anyTwoShares.length < 2) {
     throw new Error("Reconstruction requires at least 2 shares.");

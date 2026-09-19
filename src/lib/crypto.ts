@@ -227,6 +227,45 @@ export async function hashSignature(signature: string, salt: string): Promise<st
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+const LOCAL_CONFIG_CACHE_PREFIX = 'whyor_vault_config_';
+
+/**
+ * Claim 26: LocalStorage namespace key is SHA-256(owner_uid), not the raw
+ * Firebase UID, preventing cross-user cache collisions in shared browser
+ * profiles from ever depending on UID string equality/prefix behavior.
+ */
+export async function localConfigCacheKey(uid: string): Promise<string> {
+  const enc = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(uid));
+  const hex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${LOCAL_CONFIG_CACHE_PREFIX}${hex}`;
+}
+
+/**
+ * Reads the cached vault config for a UID under the new SHA-256(uid) key.
+ * If nothing is there yet but a value exists under the old raw-uid key
+ * (pre-Claim-26 caches from before this change), migrates it forward
+ * transparently: reads the legacy value, writes it under the new hashed
+ * key, removes the legacy entry, and returns it. New writes always go
+ * through localConfigCacheKey() directly, so this migration only ever
+ * needs to run once per browser profile.
+ */
+export async function readLocalConfigCacheWithMigration(uid: string): Promise<string | null> {
+  const hashedKey = await localConfigCacheKey(uid);
+  const hashedVal = localStorage.getItem(hashedKey);
+  if (hashedVal) return hashedVal;
+  const legacyKey = `${LOCAL_CONFIG_CACHE_PREFIX}${uid}`;
+  const legacyVal = localStorage.getItem(legacyKey);
+  if (legacyVal) {
+    try {
+      localStorage.setItem(hashedKey, legacyVal);
+      localStorage.removeItem(legacyKey);
+    } catch { /* best-effort migration; fall through and still return the value */ }
+    return legacyVal;
+  }
+  return null;
+}
+
 export async function hashMasterKeyPBKDF2(key: string, salt: string): Promise<string> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(key), 'PBKDF2', false, ['deriveBits']);
