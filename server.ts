@@ -52,6 +52,13 @@ async function startServer() {
   // Set up body parser for post payloads
   app.use(express.json());
 
+  // Set Cross-Origin-Opener-Policy to allow popups (e.g., Google OAuth) to maintain
+  // communication with the opener window without COOP mismatch warnings.
+  app.use((req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    next();
+  });
+
   // API Route for secure client-side proxy HMAC signature calculations
   app.post("/api/hmac", (req: express.Request, res: express.Response) => {
     try {

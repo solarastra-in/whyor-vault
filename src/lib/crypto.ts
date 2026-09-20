@@ -329,7 +329,7 @@ export async function serverHmacSignature(signature: string, salt: string, versi
 
   const serverTask = async (): Promise<string> => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
     try {
       const response = await fetch('/api/hmac', {
         method: "POST",
@@ -352,7 +352,7 @@ export async function serverHmacSignature(signature: string, salt: string, versi
   };
 
   const timeoutTask = new Promise<string>((_, reject) => 
-    setTimeout(() => reject(new Error("Server HMAC fetch timed out after 10000ms")), 10000)
+    setTimeout(() => reject(new Error("Server HMAC fetch timed out after 2500ms")), 2500)
   );
 
   return Promise.race([serverTask(), timeoutTask]).catch(err => {

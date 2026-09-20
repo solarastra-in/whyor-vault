@@ -578,7 +578,7 @@ export async function getWebAuthnPRFOutputForNewCredential(
       user: { id: userId, name: userEmail, displayName: userEmail.split('@')[0] },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
-      timeout: 60000,
+      timeout: 5000,
       attestation: 'none',
       extensions: { prf: { eval: { first: prfSalt } } } as any,
     },

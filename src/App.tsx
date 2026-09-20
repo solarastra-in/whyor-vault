@@ -2712,7 +2712,7 @@ SAFEKEEPING PROTOCOL:
           // resolve, harmlessly unused, or reject; swallow either so it
           // can never surface as an unhandled rejection later).
           prfAttempt.catch(() => {});
-          const prfTimeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 8000));
+          const prfTimeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3500));
           prfEnrollment = await Promise.race([prfAttempt, prfTimeout]);
         } catch (e) {
           console.warn('WebAuthn PRF enrollment skipped at vault creation:', e);
@@ -2793,9 +2793,10 @@ SAFEKEEPING PROTOCOL:
       onVaultCreated(configPayload, sessionKey, combinedSignature, v2KeyMaterial.dekHkdfBase);
       
       onComplete();
-    } catch (e) {
-      console.error(e);
-      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Vault Genesis Failed. Please check network connection stability and try submitting again.", type: 'error' } }));
+    } catch (e: any) {
+      console.error("Vault genesis error:", e);
+      const msg = e?.message || "Vault Genesis Failed. Please check network connection stability and try submitting again.";
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: msg, type: 'error' } }));
     } finally {
       setLoading(false);
     }

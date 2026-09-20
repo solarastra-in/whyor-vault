@@ -112,19 +112,10 @@ service cloud.firestore {
         incoming().answerSalts is list &&
         incoming().answerSalts.size() == 10;
 
-      allow update: if (canAccessVaultConfig() || isAdmin()) && 
-        incoming().ownerId == existing().ownerId &&
-        (
-          isAdmin() ||
-          // Action: Update failed attempts, corruption, members, or owners list, or sync Merkle root
-          incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails', 'auditMerkleRoot'])
-          ||
-          // Action: Reset vault (re-setup)
-          incoming().diff(existing()).affectedKeys().hasAll(['signatureHash', 'salt'])
-          ||
-          // Action: Rotate master key or hardware re-key (creator/owner only)
-          (isOwner(vaultId) && incoming().diff(existing()).affectedKeys().hasOnly(['masterKeySalt', 'hashedMasterKey', 'hashedDuressKey', 'masterKeyFailedAttempts', 'encryptedSignatureEscrow', 'encryptedAnswersEscrow', 'auditMerkleRoot', 'wrappedDEK', 'wrappedDEKIv', 'webauthnPrfCredentialId', 'webauthnPrfSaltB64', 'usedPRFAtCreation']))
-        );
+      allow update: if (isOwner(vaultId) || isAdmin()) ||
+        (canAccessVaultConfig() && 
+         incoming().ownerId == existing().ownerId &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails', 'auditMerkleRoot']));
 
       allow delete: if isOwner(vaultId) || isAdmin();
     }
