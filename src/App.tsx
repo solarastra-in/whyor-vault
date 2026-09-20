@@ -2691,19 +2691,37 @@ SAFEKEEPING PROTOCOL:
 
       // Phase 1 Protocol:
       // Claim 1/11/12/14: dual-route KDF cascade + WebAuthn PRF
-      let prfEnrollment: { credentialId: string; prfOutput: ArrayBuffer; prfSalt: ArrayBuffer } | null = null;
-      try {
-        const canWebAuthn = typeof window !== 'undefined' && 'credentials' in navigator;
-        if (canWebAuthn) {
-          prfEnrollment = await getWebAuthnPRFOutputForNewCredential(user.email || 'user@whyor.io');
+      let prfEnrollment: { credentialId: string; prfOutput: ArrayBuffer; prfSalt: ArrayBuffer } | undefined;
+      // Claim 14's fallback (Final KEK = Base KEK) exists precisely so a
+      // missing/unavailable/hung hardware authenticator never blocks vault
+      // creation. Two defenses against that in a preview/embedded context:
+      // 1) skip the attempt entirely inside an iframe, where
+      //    navigator.credentials.create() is frequently disallowed by the
+      //    embedding page's Permissions-Policy and can hang rather than
+      //    reject cleanly depending on the browser; 2) race it against a
+      //    hard timeout regardless, so a platform authenticator that never
+      //    answers (no real Touch ID/Face ID hardware, a sandboxed/headless
+      //    browser reporting one is available when none actually is, etc.)
+      //    can't leave "Seal Vault" spinning forever.
+      const isEmbeddedIframe = typeof window !== 'undefined' && window.self !== window.top;
+      if (!isEmbeddedIframe) {
+        try {
+          const prfAttempt = getWebAuthnPRFOutputForNewCredential(user.email || 'user@whyor.io');
+          // Promise.race doesn't cancel the loser -- if the timeout wins,
+          // prfAttempt keeps running in the background (it may still
+          // resolve, harmlessly unused, or reject; swallow either so it
+          // can never surface as an unhandled rejection later).
+          prfAttempt.catch(() => {});
+          const prfTimeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 8000));
+          prfEnrollment = await Promise.race([prfAttempt, prfTimeout]);
+        } catch (e) {
+          console.warn('WebAuthn PRF enrollment skipped at vault creation:', e);
         }
-      } catch (e) {
-        console.warn('WebAuthn PRF enrollment fallback to Claim 14 passphrase-only Base KEK.', e);
       }
 
       const v2KeyMaterial = await createNewVaultKeyMaterial(
         combinedSignature,
-        prfEnrollment ? prfEnrollment.prfOutput : undefined
+        prfEnrollment?.prfOutput
       );
       const sessionKey = v2KeyMaterial.dek;
 
@@ -7515,7 +7533,18 @@ function SettingsModal({
     }
     _setRekeyingHardware(true);
     try {
-      const prf = await getWebAuthnPRFOutputForNewCredential(auth.currentUser?.email || 'user@whyor.io');
+      // Guard against a platform authenticator that never answers (rather
+      // than cleanly rejecting) leaving this button spinning forever --
+      // same defensive pattern as vault creation's PRF enrollment.
+      const prfAttempt = getWebAuthnPRFOutputForNewCredential(auth.currentUser?.email || 'user@whyor.io');
+      prfAttempt.catch(() => {});
+      const prfTimeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 20000));
+      const prf = await Promise.race([prfAttempt, prfTimeout]);
+      if (!prf) {
+        notify("No hardware authenticator response received (declined, timed out, or unsupported PRF). Nothing was changed.", "error");
+        _setRekeyingHardware(false);
+        return;
+      }
       const updated = await rekeyVaultWithHardwareAuthenticator(
         combinedSignature,
         vaultConfig.argonPbkdfSaltB64 || '',
