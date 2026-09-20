@@ -307,12 +307,143 @@ export function removeBiometrics(vaultId: string): void {
   localStorage.removeItem(`${STORAGE_PREFIX}enc_sig_${vaultId}`);
   localStorage.removeItem(`${STORAGE_PREFIX}prf_salt_${vaultId}`);
   localStorage.removeItem(`${STORAGE_PREFIX}local_key_${vaultId}`); // Clean up historical key tags if present
+  clearQuickUnlockCache(vaultId);
+}
+
+// -----------------------------------------------------------------------
+// Quick-unlock DEK cache: lets a biometric unlock *within a short,
+// user-configured window* skip the expensive Argon2id(64MB)+PBKDF2(600k)
+// cascade a full unlock normally re-runs, WITHOUT ever skipping the live
+// hardware tap itself. Design constraints (deliberately chosen over a
+// fully-silent auto-resume):
+//   - A fresh WebAuthn assertion (Touch ID/Face ID/Windows Hello/security
+//     key, `userVerification: "required"`) is REQUIRED on every unlock,
+//     cache hit or not -- this cache only ever changes how much *compute*
+//     that already-verified tap unlocks, never whether a tap is needed.
+//   - The cached material is the raw master DEK, wrapped (AES-256-GCM)
+//     under a key derived from that SAME hardware assertion's PRF output
+//     (or rawId fallback, symmetric with the existing combinedSignature
+//     cache above) using a distinct HKDF info string, so this cache can't
+//     be unwrapped by anything other than a live, successful assertion
+//     against the exact credential it was created with.
+//   - Entries expire (default 15 minutes, user-configurable) and are
+//     re-derived fresh (not extended) on every full unlock, so the window
+//     an attacker with the encrypted cache blob but no hardware could
+//     matter in is bounded and short even if localStorage leaked.
+//   - Cleared on: biometric unlink, master-key/DEK rotation (the cached
+//     raw bytes would just be stale and fail to decrypt anything real
+//     anyway, but clearing is cheap and avoids confusing errors), and any
+//     explicit "forget this device" action.
+// -----------------------------------------------------------------------
+
+export const DEFAULT_QUICK_UNLOCK_WINDOW_MINS = 15;
+const QUICK_UNLOCK_WINDOW_PREF_KEY = (vaultId: string) => `${STORAGE_PREFIX}quick_unlock_window_mins_${vaultId}`;
+const QUICK_UNLOCK_DEK_CACHE_KEY = (vaultId: string) => `${STORAGE_PREFIX}dek_cache_${vaultId}`;
+
+export function getQuickUnlockWindowMins(vaultId: string): number {
+  try {
+    const stored = localStorage.getItem(QUICK_UNLOCK_WINDOW_PREF_KEY(vaultId));
+    const parsed = stored ? parseInt(stored, 10) : NaN;
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 240) return parsed;
+  } catch { /* fall through to default */ }
+  return DEFAULT_QUICK_UNLOCK_WINDOW_MINS;
+}
+
+export function setQuickUnlockWindowMins(vaultId: string, mins: number): void {
+  const clamped = Math.max(1, Math.min(240, Math.round(mins)));
+  try {
+    localStorage.setItem(QUICK_UNLOCK_WINDOW_PREF_KEY(vaultId), String(clamped));
+  } catch { /* best-effort preference; not security-relevant if it fails */ }
+}
+
+export function clearQuickUnlockCache(vaultId: string): void {
+  localStorage.removeItem(QUICK_UNLOCK_DEK_CACHE_KEY(vaultId));
+}
+
+async function deriveDekCacheWrapKey(hardwareEntropyBuffer: ArrayBuffer): Promise<CryptoKey> {
+  const hwKeyMaterial = await crypto.subtle.importKey('raw', hardwareEntropyBuffer, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(16),
+      // Distinct info string from the combinedSignature cache above --
+      // these must never resolve to the same wrapping key even though
+      // they're derived from the same hardware entropy.
+      info: new TextEncoder().encode('webauthn-hardware-bound-dek-cache-v1'),
+    },
+    hwKeyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * Wraps the raw master DEK under a key derived from the hardware entropy
+ * of the assertion that JUST completed (no extra prompt), for a future
+ * biometric unlock to consume within windowMins. Call this right after a
+ * *full* unlock (one that ran the real KDF cascade) so the next unlock can
+ * skip it.
+ */
+export async function cacheQuickUnlockDek(
+  vaultId: string,
+  dekRaw: Uint8Array,
+  hardwareEntropyBuffer: ArrayBuffer,
+  windowMins: number = getQuickUnlockWindowMins(vaultId)
+): Promise<void> {
+  try {
+    const key = await deriveDekCacheWrapKey(hardwareEntropyBuffer);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const wrappedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, dekRaw);
+    const entry = {
+      wrapped: arrayBufferToBase64Url(wrappedBuf),
+      iv: arrayBufferToBase64Url(iv.buffer),
+      expiresAt: Date.now() + windowMins * 60 * 1000,
+    };
+    localStorage.setItem(QUICK_UNLOCK_DEK_CACHE_KEY(vaultId), JSON.stringify(entry));
+  } catch (e) {
+    // Best-effort speedup cache -- a failure here just means the next
+    // unlock falls back to the full (correct, slower) KDF cascade.
+    console.warn('Failed to populate quick-unlock DEK cache (non-fatal):', e);
+  }
+}
+
+/**
+ * Attempts to recover the cached raw DEK using the hardware entropy from
+ * an assertion that JUST completed. Returns null (not a throw) on any
+ * miss -- expired, absent, or the assertion doesn't match what the cache
+ * was wrapped under -- so the caller falls back to the full KDF cascade
+ * rather than surfacing a distinct error for what is purely a
+ * performance-path miss.
+ */
+export async function consumeQuickUnlockDek(vaultId: string, hardwareEntropyBuffer: ArrayBuffer): Promise<Uint8Array | null> {
+  try {
+    const raw = localStorage.getItem(QUICK_UNLOCK_DEK_CACHE_KEY(vaultId));
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as { wrapped: string; iv: string; expiresAt: number };
+    if (!entry.expiresAt || Date.now() > entry.expiresAt) {
+      localStorage.removeItem(QUICK_UNLOCK_DEK_CACHE_KEY(vaultId));
+      return null;
+    }
+    const key = await deriveDekCacheWrapKey(hardwareEntropyBuffer);
+    const ptBuf = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: base64UrlToArrayBuffer(entry.iv) },
+      key,
+      base64UrlToArrayBuffer(entry.wrapped)
+    );
+    return new Uint8Array(ptBuf);
+  } catch {
+    // Wrong hardware entropy (different/re-registered credential), corrupt
+    // entry, etc. -- all treated as a plain cache miss.
+    return null;
+  }
 }
 
 /**
  * Unlock the vault using WebAuthn biometric assertion.
  */
-export async function authenticateWithBiometrics(vaultId: string): Promise<{ combinedSignature: string; hardwareEntropy: string }> {
+export async function authenticateWithBiometrics(vaultId: string): Promise<{ combinedSignature: string; hardwareEntropy: string; hardwareEntropyBuffer: ArrayBuffer }> {
   const credIdStr = localStorage.getItem(`${STORAGE_PREFIX}cred_id_${vaultId}`);
   const ivStr = localStorage.getItem(`${STORAGE_PREFIX}iv_${vaultId}`);
   const encryptedSigStr = localStorage.getItem(`${STORAGE_PREFIX}enc_sig_${vaultId}`);
@@ -407,7 +538,8 @@ export async function authenticateWithBiometrics(vaultId: string): Promise<{ com
 
     return {
       combinedSignature: signature,
-      hardwareEntropy: hardwareEntropyHex
+      hardwareEntropy: hardwareEntropyHex,
+      hardwareEntropyBuffer
     };
 
   } catch (err: any) {

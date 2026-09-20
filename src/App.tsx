@@ -412,7 +412,7 @@ import { getItemMonetaryValue } from './components/AssetPillars';
 import { seedInitialFirebaseData } from './utils/firebaseSeed';
 import GuidedTour, { TourLauncherButton } from './components/GuidedTour';
 import { Tooltip, InfoTooltip, FieldLabel } from './components/Tooltip';
-import { Coins, Wallet, Flame, Sparkles, Clock, Calendar, AlertTriangle } from 'lucide-react';
+import { Coins, Wallet, Flame, Sparkles, Clock, Calendar, AlertTriangle, Zap } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/error-handler';
 import DatabaseStatus from './components/DatabaseStatus';
 import ErasureProtocolAnimation from './components/ErasureProtocolAnimation';
@@ -424,13 +424,20 @@ import {
   isBiometricRegistered, 
   registerBiometrics, 
   removeBiometrics, 
-  authenticateWithBiometrics 
+  authenticateWithBiometrics,
+  consumeQuickUnlockDek,
+  cacheQuickUnlockDek,
+  clearQuickUnlockCache,
+  getQuickUnlockWindowMins,
+  setQuickUnlockWindowMins,
+  DEFAULT_QUICK_UNLOCK_WINDOW_MINS
 } from './lib/webauthn';
 import { generateLocalQrDataUrl } from './lib/localQr';
 import { 
   createNewVaultKeyMaterial, KDF_VERSION_CURRENT, validateAnswerEntropy, 
   rekeyVaultWithHardwareAuthenticator, derivePartitionSubKeyV2, derivePartitionSubKeyRawV2,
-  deriveBaseKEK, deriveFinalKEK, generateSaltBytes
+  deriveBaseKEK, deriveFinalKEK, generateSaltBytes,
+  unlockV2VaultWithCacheableDek, importCachedDekRaw
 } from './lib/vaultKeys';
 import { getWebAuthnPRFOutputForNewCredential } from './lib/webauthn';
 import { deriveSessionKeyForConfig, deriveSessionMaterialForConfig } from './lib/sessionKeyBridge';
@@ -1082,6 +1089,11 @@ export default function App() {
             // 4. Delete config
             await deleteDoc(doc(db, 'vaults', vId, 'vault', 'config'));
           } catch (e) { console.warn("Failed to wipe config for", vId, e); }
+
+          // Clean up local biometric registration and quick-unlock DEK cache
+          try {
+            removeBiometrics(vId);
+          } catch (e) { console.warn("Failed to wipe local biometrics for", vId, e); }
         }
         
         // 5. Delete tokens if vaultId was personal
@@ -4702,11 +4714,53 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
       }
 
       if (matched) {
-        const { dek: sessionKey, dekHkdfBase } = await deriveSessionMaterialForConfig(combinedSig, config);
+        let sessionKey: CryptoKey;
+        let dekHkdfBase: CryptoKey;
+        let usedQuickUnlock = false;
+
+        const isV2 = config.kdfVersion === KDF_VERSION_CURRENT && config.argonPbkdfSaltB64 && config.wrappedDEK && config.wrappedDEKIv;
+
+        if (isV2 && authResult.hardwareEntropyBuffer) {
+          const cachedDekRaw = await consumeQuickUnlockDek(vaultId, authResult.hardwareEntropyBuffer);
+          if (cachedDekRaw) {
+            const imported = await importCachedDekRaw(cachedDekRaw);
+            cachedDekRaw.fill(0);
+            sessionKey = imported.dek;
+            dekHkdfBase = imported.dekHkdfBase;
+            usedQuickUnlock = true;
+          } else {
+            const full = await unlockV2VaultWithCacheableDek(
+              combinedSig,
+              config.argonPbkdfSaltB64,
+              config.wrappedDEK,
+              config.wrappedDEKIv
+            );
+            sessionKey = full.dek;
+            dekHkdfBase = full.dekHkdfBase;
+            await cacheQuickUnlockDek(
+              vaultId,
+              full.dekRawForCache,
+              authResult.hardwareEntropyBuffer,
+              getQuickUnlockWindowMins(vaultId)
+            ).catch(e => console.warn("Quick-unlock DEK cache error:", e));
+            full.dekRawForCache.fill(0);
+          }
+        } else {
+          const derived = await deriveSessionMaterialForConfig(combinedSig, config);
+          sessionKey = derived.dek;
+          dekHkdfBase = derived.dekHkdfBase;
+        }
+
         const actor = auth.currentUser;
         if (actor) {
-          logVaultAction(vaultId, actor, AuditAction.LOGIN_SUCCESS, AuditResourceType.VAULT, vaultId, "Vault unlocked with biometric hardware.")
-            .catch(e => console.warn("Biometric login log delayed/failed:", e));
+          logVaultAction(
+            vaultId,
+            actor,
+            AuditAction.LOGIN_SUCCESS,
+            AuditResourceType.VAULT,
+            vaultId,
+            `Vault unlocked with biometric hardware${usedQuickUnlock ? ' (quick-unlock cache hit)' : ''}.`
+          ).catch(e => console.warn("Biometric login log delayed/failed:", e));
         }
         
         // Auto-upgrade / migrate pepper version on next successful authentication
@@ -5620,6 +5674,12 @@ function VaultMain({
     freeLimit: 3
   });
   const [isPaywallModalOpen, setIsPaywallModalOpen] = useState(false);
+  const [dismissedBiometricNudge, setDismissedBiometricNudge] = useState(() => {
+    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(`dismissed_biometric_nudge_${vaultId}`) === 'true';
+  });
+  const [dismissedSecurityAdvisory, setDismissedSecurityAdvisory] = useState(() => {
+    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(`dismissed_security_advisory_${vaultId}`) === 'true';
+  });
 
   useEffect(() => {
     const sRef = doc(db, 'system', 'config');
@@ -6293,6 +6353,83 @@ function VaultMain({
               <Coins className="h-4 w-4" />
               Upgrade Workspace
             </button>
+          </div>
+        )}
+
+        {/* Claim 14 Reduced Security Level Advisory Banner */}
+        {vaultConfig?.usedPRFAtCreation === false && !dismissedSecurityAdvisory && (
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative z-10 animate-fadeIn">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-left">
+                <span className="text-xs font-bold text-amber-300 uppercase tracking-wider block">
+                  Security Advisory: Operating at Reduced Security Level (Claim 14)
+                </span>
+                <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed max-w-2xl">
+                  This vault was initialized without a WebAuthn PRF hardware authenticator (Final KEK = Base KEK). Your Master DEK is not bound to a physical security device. You can upgrade to hardware-bound protection without re-entering your data.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+              <button
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Bind Authenticator
+              </button>
+              <button
+                onClick={() => {
+                  setDismissedSecurityAdvisory(true);
+                  try { sessionStorage.setItem(`dismissed_security_advisory_${vaultId}`, 'true'); } catch {}
+                }}
+                className="text-slate-400 hover:text-white text-xs font-semibold p-1.5 cursor-pointer"
+                title="Dismiss advisory"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Biometric Quick-Unlock Enrollment Nudge Banner */}
+        {!isBiometricRegistered(vaultId) && !dismissedBiometricNudge && (
+          <div className="mb-6 p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl flex flex-col md:flex-row md:items-center md:justify-between gap-4 relative z-10 animate-fadeIn">
+            <div className="flex items-start gap-3">
+              <Zap className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-left">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">
+                    Enable Biometric Quick-Unlock
+                  </span>
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold">
+                    SPEEDUP
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed max-w-2xl">
+                  Link Touch ID, Face ID, or Windows Hello on this device to unlock your vault in seconds. Subsequent unlocks bypass the lengthy key derivation flow while remaining hardware-protected.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+              <button
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center gap-1.5"
+              >
+                <Fingerprint className="h-3.5 w-3.5" />
+                Link Biometrics
+              </button>
+              <button
+                onClick={() => {
+                  setDismissedBiometricNudge(true);
+                  try { sessionStorage.setItem(`dismissed_biometric_nudge_${vaultId}`, 'true'); } catch {}
+                }}
+                className="text-slate-400 hover:text-white text-xs font-semibold p-1.5 cursor-pointer"
+                title="Dismiss nudge"
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
         
@@ -7392,6 +7529,7 @@ function SettingsModal({
         webauthnPrfSaltB64: btoa(String.fromCharCode(...new Uint8Array(prf.prfSalt))),
         usedPRFAtCreation: true,
       } as any);
+      clearQuickUnlockCache(vaultId);
       notify("Hardware authenticator successfully bound to Vault Key (Claim 14)!", "success");
     } catch (e: any) {
       console.error(e);
@@ -7406,6 +7544,7 @@ function SettingsModal({
   const [activeTab, setActiveTab] = useState<'biometrics' | 'purge' | 'rotate' | 'deadmans'>('biometrics');
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [quickUnlockWindow, setQuickUnlockWindow] = useState<number>(() => getQuickUnlockWindowMins(vaultId));
 
   // States for Dead Man's Switch, Succession Tiers, and Granular Role Privileges
   const [dmsArmed, setDmsArmed] = useState(vaultConfig.deadMansSwitchArmed || false);
@@ -7651,6 +7790,7 @@ function SettingsModal({
       }
 
       notify("Master key rotated successfully.", "success");
+      clearQuickUnlockCache(vaultId);
       setRotateSuccess(true);
     } catch (e: any) {
       console.error(e);
@@ -8066,6 +8206,57 @@ function SettingsModal({
                 )}
               </div>
             </div>
+
+            {isRegistered && (
+              <div className="p-4 rounded-xl border bg-slate-950 border-slate-800 flex items-center justify-between gap-4 animate-fadeIn">
+                <div className="text-left">
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="h-3.5 w-3.5 text-amber-400" />
+                    <span className="text-xs font-semibold text-white">Biometric Quick-Unlock Window</span>
+                  </div>
+                  <span className="block text-[10px] text-slate-500 mt-1 leading-normal max-w-[280px]">
+                    Skips the expensive Argon2id(64MB) + PBKDF2(600k) key derivation during frequent re-unlocks within this window. A fresh live biometric assertion is still required on every unlock.
+                  </span>
+                </div>
+                <select
+                  value={quickUnlockWindow}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setQuickUnlockWindow(val);
+                    setQuickUnlockWindowMins(vaultId, val);
+                    notify(`Quick-unlock window adjusted to ${val} minutes.`, 'success');
+                  }}
+                  className="bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs font-bold text-indigo-400 focus:border-indigo-600 outline-none cursor-pointer"
+                >
+                  <option value={5}>5 Minutes</option>
+                  <option value={15}>15 Minutes (Default)</option>
+                  <option value={30}>30 Minutes</option>
+                  <option value={60}>1 Hour</option>
+                  <option value={120}>2 Hours</option>
+                  <option value={240}>4 Hours</option>
+                </select>
+              </div>
+            )}
+
+            {vaultConfig?.usedPRFAtCreation === false && (
+              <div className="p-4 rounded-xl border bg-amber-500/10 border-amber-500/30 space-y-3 animate-fadeIn">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase font-mono">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>Reduced Security Level (Claim 14 Fallback)</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed text-left">
+                  This vault was initialized without a WebAuthn PRF hardware authenticator (Final KEK = Base KEK). Your Master DEK is not physically bound to hardware. You can bind an authenticator now to upgrade your vault to full device-bound security without losing any encrypted data.
+                </p>
+                <button
+                  disabled={_rekeyingHardware}
+                  onClick={_handleBindHardwareKey}
+                  className="w-full py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition-all text-xs uppercase tracking-widest disabled:opacity-50 cursor-pointer shadow-lg shadow-amber-900/30 flex items-center justify-center gap-2"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  {_rekeyingHardware ? "Binding WebAuthn Key..." : "Bind Authenticator to Vault Key (Upgrade Security)"}
+                </button>
+              </div>
+            )}
 
             {/* Session Timeout Configuration */}
             <div className="p-5 rounded-2xl border bg-slate-950 mt-6 border-slate-800 animate-fadeIn">

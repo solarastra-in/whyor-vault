@@ -328,6 +328,46 @@ export async function unlockV2Vault(
   return { dek, dekHkdfBase, usedPRF };
 }
 
+/**
+ * Variant of unlockV2Vault that returns the unwrapped raw DEK bytes in
+ * addition to the imported CryptoKeys, so a caller can populate a short-lived,
+ * hardware-bound quick-unlock cache. The caller is responsible for zeroing
+ * dekRawForCache (e.g. via .fill(0)) once cached.
+ */
+export async function unlockV2VaultWithCacheableDek(
+  passphrase: string,
+  argonPbkdfSaltB64: string,
+  wrappedDEK: string,
+  wrappedDEKIv: string,
+  prfOutput?: ArrayBuffer
+): Promise<{ dek: CryptoKey; dekHkdfBase: CryptoKey; usedPRF: boolean; dekRawForCache: Uint8Array }> {
+  const saltBytes = b64ToBytes(argonPbkdfSaltB64);
+  const baseKEKBytes = await deriveBaseKEK(passphrase, saltBytes);
+  const { key: finalKEK, usedPRF } = await deriveFinalKEK(baseKEKBytes, prfOutput);
+
+  const ptBuf = await crypto.subtle.decrypt(
+    { name: AES, iv: b64ToBytes(wrappedDEKIv) }, finalKEK, b64ToBytes(wrappedDEK)
+  );
+  const rawDek = new Uint8Array(ptBuf);
+  const dek = await crypto.subtle.importKey('raw', rawDek, { name: AES, length: 256 }, false, ['encrypt', 'decrypt']);
+  const dekHkdfBase = await importDekAsHkdfBase(rawDek);
+  const dekRawForCache = rawDek.slice();
+  rawDek.fill(0);
+
+  return { dek, dekHkdfBase, usedPRF, dekRawForCache };
+}
+
+/**
+ * Reconstructs the {dek, dekHkdfBase} pair from raw DEK bytes recovered from
+ * a hardware-bound quick-unlock cache. Bypasses the expensive KDF cascade
+ * without altering the resulting session keys.
+ */
+export async function importCachedDekRaw(rawDek: Uint8Array): Promise<{ dek: CryptoKey; dekHkdfBase: CryptoKey }> {
+  const dek = await crypto.subtle.importKey('raw', rawDek, { name: AES, length: 256 }, false, ['encrypt', 'decrypt']);
+  const dekHkdfBase = await importDekAsHkdfBase(rawDek);
+  return { dek, dekHkdfBase };
+}
+
 export interface RekeyResult {
   wrappedDEK: string;
   wrappedDEKIv: string;
