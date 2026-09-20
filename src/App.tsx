@@ -2471,7 +2471,22 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
   const [deliveryProfile, setDeliveryProfile] = useState<'consumer' | 'pro'>('consumer');
   const [masterKey, setMasterKey] = useState('');
   const [duressKey, setDuressKey] = useState('');
-  const [answers, setAnswers] = useState<string[]>(new Array(10).fill(''));
+  const [answers, setAnswers] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('whyor_vault_setup_answers');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 10) return parsed;
+      }
+    } catch {}
+    return new Array(10).fill('');
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('whyor_vault_setup_answers', JSON.stringify(answers));
+    } catch {}
+  }, [answers]);
   const [visibleAnswers, setVisibleAnswers] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [validation, setValidation] = useState<{ valid: boolean; errors: string[] }>({ valid: false, errors: [] });
@@ -2651,6 +2666,21 @@ SAFEKEEPING PROTOCOL:
       notify("Please answer all 10 questions.", 'error');
       return;
     }
+
+    // Claim 13: Passphrase entropy enforcement at creation - validate BEFORE expensive crypto
+    for (let i = 0; i < answers.length; i++) {
+      const check = validateAnswerEntropy(answers[i]);
+      if (!check.valid) {
+        window.dispatchEvent(new CustomEvent('app-notify', {
+          detail: {
+            message: `Shard #${i + 1} entropy insufficient: ${check.error || 'Too predictable'}`,
+            type: 'error',
+          },
+        }));
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       // Phase 1 Protocol:
@@ -2669,21 +2699,6 @@ SAFEKEEPING PROTOCOL:
       
        // 5. Generate Combined Signature
       const combinedSignature = await computeSignature(hashedAnswers);
-      
-      // Claim 13: Passphrase entropy enforcement at creation
-      for (let i = 0; i < answers.length; i++) {
-        const check = validateAnswerEntropy(answers[i]);
-        if (!check.valid) {
-          window.dispatchEvent(new CustomEvent('app-notify', {
-            detail: {
-              message: `Answer ${i + 1} entropy insufficient: ${check.error || 'Too predictable'}`,
-              type: 'error',
-            },
-          }));
-          setLoading(false);
-          return;
-        }
-      }
 
       // 6. Generate salt for signature hashing
       const globalSalt = generateSalt();
@@ -2790,9 +2805,11 @@ SAFEKEEPING PROTOCOL:
       
       await logVaultAction(user.uid, user, AuditAction.CREATE, AuditResourceType.VAULT, user.uid, "Phase 1: Vault Genesis Protocol Completed with Duress support.");
       
-      onVaultCreated(configPayload, sessionKey, combinedSignature, v2KeyMaterial.dekHkdfBase);
+      try {
+        sessionStorage.removeItem('whyor_vault_setup_answers');
+      } catch {}
       
-      onComplete();
+      onVaultCreated(configPayload, sessionKey, combinedSignature, v2KeyMaterial.dekHkdfBase);
     } catch (e: any) {
       console.error("Vault genesis error:", e);
       const msg = e?.message || "Vault Genesis Failed. Please check network connection stability and try submitting again.";

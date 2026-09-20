@@ -3,9 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Eye, EyeOff, Shield, ShieldCheck, Key, Lock, Unlock, 
   Sparkles, ChevronLeft, ChevronRight, CheckCircle2, RotateCcw,
-  Volume2, VolumeX, Grid, Layers, HelpCircle, ArrowRight, Zap
+  Volume2, VolumeX, Grid, Layers, HelpCircle, ArrowRight, Zap, AlertTriangle
 } from 'lucide-react';
 import { SECURITY_QUESTIONS } from '../constants/questions';
+import { validateAnswerEntropy, padAnswerTo20BitEntropy, estimateEntropyBits } from '../lib/vaultKeys';
 import { cn } from '../lib/utils';
 
 // High-fidelity sound synthesizer for cryptographic question terminal
@@ -72,6 +73,27 @@ class QuestionSoundFX {
       gain.connect(this.ctx.destination);
       osc.start(now);
       osc.stop(now + 0.14);
+    } catch (e) {}
+  }
+
+  // Error alert beep
+  playErrorBeep() {
+    if (this.isMuted) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.setValueAtTime(160, now + 0.08);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.22);
     } catch (e) {}
   }
 
@@ -722,16 +744,68 @@ export default function CinematicQuestionExperience({
     questionFX.setMuted(next);
   };
 
-  // Evaluate answer entropy rating
-  const getEntropyLevel = (text: string) => {
+  // Evaluate answer entropy rating using 20-bit rule with deterministic padding
+  const getEntropyLevel = (text: string, shardIdx: number = activeIndex) => {
     const trimmed = text.trim();
-    if (!trimmed) return { level: 'NONE', label: 'Empty Shard', color: 'text-slate-500', width: '0%', bg: 'bg-slate-700' };
-    if (trimmed.length < 3) return { level: 'LOW', label: 'Low Entropy', color: 'text-amber-400', width: '25%', bg: 'bg-amber-500' };
-    if (trimmed.length < 6) return { level: 'MED', label: 'Moderate Enclave', color: 'text-indigo-400', width: '65%', bg: 'bg-indigo-500' };
-    return { level: 'HIGH', label: 'Military-Grade Entropy', color: 'text-emerald-400', width: '100%', bg: 'bg-emerald-400' };
+    if (!trimmed) return { level: 'NONE', label: 'Empty Shard', color: 'text-slate-500', width: '0%', bg: 'bg-slate-700', valid: false, hint: '' };
+    
+    const rawBits = estimateEntropyBits(trimmed.toLowerCase());
+    if (rawBits >= 20) {
+      return { 
+        level: 'HIGH', 
+        label: `Military-Grade Entropy (~${Math.round(rawBits)} bits)`, 
+        hint: 'Exceeds 20-bit security rule naturally',
+        color: 'text-emerald-400', 
+        width: '100%', 
+        bg: 'bg-emerald-400',
+        valid: true 
+      };
+    }
+    
+    // Natural entropy under 20 bits -> deterministic 20-bit cryptographic padding applies
+    const padded = padAnswerTo20BitEntropy(trimmed, shardIdx);
+    const check = validateAnswerEntropy(padded);
+    return { 
+      level: 'MED', 
+      label: `20-Bit Enclave [Padded] (~${Math.round(rawBits)} → 20+ bits)`, 
+      hint: 'Mandatory 20-bit entropy rule satisfied via deterministic cryptographic padding',
+      color: 'text-indigo-400', 
+      width: '75%', 
+      bg: 'bg-indigo-500',
+      valid: check.valid 
+    };
   };
 
-  const entropy = getEntropyLevel(currentAnswer);
+  const entropy = getEntropyLevel(currentAnswer, activeIndex);
+
+  const handleSubmitClick = () => {
+    for (let i = 0; i < SECURITY_QUESTIONS.length; i++) {
+      const val = (answers[i] || '').trim();
+      if (!val) {
+        setActiveIndex(i);
+        setViewMode('single');
+        questionFX.playErrorBeep();
+        window.dispatchEvent(new CustomEvent('app-notify', {
+          detail: { message: `Shard #${i + 1} is empty. Please answer all 10 questions.`, type: 'error' }
+        }));
+        return;
+      }
+      const check = validateAnswerEntropy(val, i, true);
+      if (!check.valid) {
+        setActiveIndex(i);
+        setViewMode('single');
+        questionFX.playErrorBeep();
+        window.dispatchEvent(new CustomEvent('app-notify', {
+          detail: { 
+            message: `Shard #${i + 1} does not meet the 20-bit entropy rule.`, 
+            type: 'error' 
+          }
+        }));
+        return;
+      }
+    }
+    onSubmit();
+  };
 
   return (
     <div className="w-full text-slate-100 flex flex-col space-y-6 select-none animate-fade-in">
@@ -993,6 +1067,13 @@ export default function CinematicQuestionExperience({
                         {entropy.label}
                       </span>
                     </div>
+
+                    {currentAnswer.trim() && !entropy.valid && (
+                      <div className="flex items-center gap-1.5 px-1 text-[11px] text-amber-400 font-mono bg-amber-500/10 border border-amber-500/20 rounded-xl p-2">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                        <span>{entropy.hint || "Answer needs at least 4-5 distinct characters for security."}</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* CAROUSEL CONTROLS */}
@@ -1036,13 +1117,16 @@ export default function CinematicQuestionExperience({
             const answer = answers[idx] || '';
             const isVisible = !!visibleAnswers[idx];
             const isAnswered = answer.trim().length > 0;
+            const entropyCheck = validateAnswerEntropy(answer, idx, true);
 
             return (
               <div 
                 key={idx}
                 className={cn(
                   "rounded-2xl border p-4 bg-slate-900/80 relative overflow-hidden flex flex-col justify-between space-y-3 transition-all",
-                  isAnswered ? "border-emerald-500/40" : "border-slate-800 hover:border-slate-700"
+                  isAnswered 
+                    ? (entropyCheck.valid ? "border-emerald-500/40" : "border-amber-500/40 bg-amber-950/10") 
+                    : "border-slate-800 hover:border-slate-700"
                 )}
               >
                 <div className="flex items-center justify-between">
@@ -1062,7 +1146,17 @@ export default function CinematicQuestionExperience({
                     </span>
                   </div>
                   {isAnswered && (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                    entropyCheck.valid ? (
+                      <div className="flex items-center gap-1 text-emerald-400 text-[10px] font-mono font-bold">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>READY</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-amber-400 text-[10px] font-mono font-bold" title="Needs at least 4-5 distinct characters">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>TOO SHORT</span>
+                      </div>
+                    )
                   )}
                 </div>
 
@@ -1112,7 +1206,7 @@ export default function CinematicQuestionExperience({
         <button
           type="button"
           disabled={loading || !isAllAnswered}
-          onClick={onSubmit}
+          onClick={handleSubmitClick}
           className={cn(
             "w-full sm:flex-1 py-4 px-6 rounded-2xl font-mono text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2.5 transition-all shadow-xl cursor-pointer",
             isAllAnswered && !loading

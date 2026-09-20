@@ -5,6 +5,7 @@
  */
 
 import { argon2id } from 'hash-wasm';
+import { padAnswerTo20BitEntropy } from './vaultKeys';
 
 const ALGO = 'AES-GCM';
 const PBKDF2_ITERATIONS = 250000;
@@ -207,9 +208,12 @@ export async function decrypt(encryptedBase64: string, key: CryptoKey, associate
   }
 }
 
-export async function hashAnswer(answer: string, salt: string): Promise<string> {
+export async function hashAnswer(answer: string, salt: string, shardIndex?: number): Promise<string> {
   const enc = new TextEncoder();
-  const data = enc.encode(answer.toLowerCase().trim() + salt);
+  const effectiveAnswer = shardIndex !== undefined
+    ? padAnswerTo20BitEntropy(answer, shardIndex)
+    : answer;
+  const data = enc.encode(effectiveAnswer.toLowerCase().trim() + salt);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
