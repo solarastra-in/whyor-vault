@@ -56,6 +56,30 @@ async function startServer() {
   // communication with the opener window without COOP mismatch warnings.
   app.use((req, res, next) => {
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+
+    // Content Security Policy (CSP):
+    // Prevents arbitrary string evaluation (eval, new Function, string timeouts) in production,
+    // while permitting Vite runtime transforms and WebAssembly execution in dev mode.
+    const isDev = process.env.NODE_ENV !== "production";
+    const scriptSrc = isDev
+      ? "'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.firebaseapp.com https://www.gstatic.com"
+      : "'self' 'unsafe-inline' https://apis.google.com https://*.firebaseapp.com https://www.gstatic.com";
+
+    const cspDirectives = [
+      "default-src 'self'",
+      `script-src ${scriptSrc}`,
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https:",
+      "connect-src 'self' ws: wss: https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.run.app",
+      "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
+      "worker-src 'self' blob:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ];
+
+    res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
     next();
   });
 

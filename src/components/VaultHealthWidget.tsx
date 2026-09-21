@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import * as d3 from 'd3';
+import { select } from 'd3-selection';
+import { arc, pie, type PieArcDatum } from 'd3-shape';
+import { interpolate } from 'd3-interpolate';
+import 'd3-transition';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Activity, ShieldCheck, AlertTriangle, CheckCircle2, 
@@ -201,7 +204,7 @@ export default function VaultHealthWidget({
   useEffect(() => {
     if (!svgRef.current) return;
 
-    const svg = d3.select(svgRef.current);
+    const svg = select(svgRef.current);
     svg.selectAll('*').remove(); // Clear previous render
 
     const width = dimensions.width;
@@ -217,14 +220,14 @@ export default function VaultHealthWidget({
 
     // If no items, draw empty aesthetic ring
     if (distributionData.length === 0) {
-      const arc = d3.arc<any>()
+      const arcGen = arc<any>()
         .innerRadius(innerRadius)
         .outerRadius(outerRadius)
         .startAngle(0)
         .endAngle(2 * Math.PI);
 
       g.append('path')
-        .attr('d', arc(null as any)!)
+        .attr('d', arcGen(null as any)!)
         .attr('fill', '#1e293b')
         .attr('stroke', '#334155')
         .attr('stroke-width', 1.5)
@@ -234,24 +237,24 @@ export default function VaultHealthWidget({
     }
 
     // D3 Pie Generator
-    const pie = d3.pie<SliceData>()
+    const pieGen = pie<SliceData>()
       .value(d => d.count)
       .sort(null)
       .padAngle(0.04);
 
     // Normal & Expanded Arc Generators
-    const arcGen = d3.arc<d3.PieArcDatum<SliceData>>()
+    const arcGen = arc<PieArcDatum<SliceData>>()
       .innerRadius(innerRadius)
       .outerRadius(outerRadius)
       .cornerRadius(5);
 
-    const arcHoverGen = d3.arc<d3.PieArcDatum<SliceData>>()
+    const arcHoverGen = arc<PieArcDatum<SliceData>>()
       .innerRadius(innerRadius - 2)
       .outerRadius(outerRadius + 6)
       .cornerRadius(6);
 
     const arcs = g.selectAll('.arc')
-      .data(pie(distributionData))
+      .data(pieGen(distributionData))
       .enter()
       .append('g')
       .attr('class', 'arc')
@@ -266,7 +269,7 @@ export default function VaultHealthWidget({
         (this as any)._current = d;
       })
       .on('mouseenter', function(event, d) {
-        d3.select(this)
+        select(this)
           .transition()
           .duration(200)
           .attr('d', arcHoverGen as any)
@@ -276,7 +279,7 @@ export default function VaultHealthWidget({
         setHoveredSlice(d.data);
       })
       .on('mouseleave', function(event, d) {
-        d3.select(this)
+        select(this)
           .transition()
           .duration(200)
           .attr('d', arcGen as any)
@@ -293,9 +296,9 @@ export default function VaultHealthWidget({
       .transition()
       .duration(700)
       .attrTween('d', function(d) {
-        const interpolate = d3.interpolate({ startAngle: 0, endAngle: 0 }, d);
+        const interpolator = interpolate({ startAngle: 0, endAngle: 0 }, d);
         return function(t) {
-          return arcGen(interpolate(t) as any)!;
+          return arcGen(interpolator(t) as any)!;
         };
       });
 

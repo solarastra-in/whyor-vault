@@ -383,7 +383,6 @@ import {
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
-import XlsxPopulate from 'xlsx-populate/browser/xlsx-populate';
 import { cn, safeCopyToClipboard, getCleanPreviewUrl } from './lib/utils';
 import { 
   hashAnswer, deriveKey, encrypt, decrypt, generateSalt,
@@ -8950,29 +8949,37 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
   const generateSecureExcel = async () => {
     setLoading(true);
     try {
-      const workbook = await XlsxPopulate.fromBlankAsync();
-      const sheet = workbook.sheet(0);
-      sheet.name("Vault Protocol Export");
-
-      EXCEL_HEADERS.forEach((h, i) => {
-        sheet.cell(1, i + 1).value(h).style({ bold: true, fontColor: "ffffff", fill: "4f46e5" });
-      });
-
-      items.forEach((item, rIdx) => {
+      const rows = items.map(item => {
         const mapped = mapItemToRow(item);
-        EXCEL_HEADERS.forEach((h, cIdx) => {
-          sheet.cell(rIdx + 2, cIdx + 1).value((mapped as any)[h]);
+        const rowObj: Record<string, any> = {};
+        EXCEL_HEADERS.forEach(h => {
+          rowObj[h] = (mapped as any)[h] ?? '';
         });
+        return rowObj;
       });
 
-      // User requested password protected using security questions
-      const password = challengeAnswers.map(a => a.toLowerCase().trim()).join('_');
-      
-      const blob = await workbook.outputAsync({ password });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(rows, { header: [...EXCEL_HEADERS] });
+
+      // Auto-size columns for pristine spreadsheet readability
+      const colWidths = EXCEL_HEADERS.map(header => {
+        let maxLen = header.length;
+        rows.forEach(r => {
+          const val = String(r[header] || '');
+          if (val.length > maxLen) maxLen = Math.min(val.length, 50);
+        });
+        return { wch: maxLen + 3 };
+      });
+      ws['!cols'] = colWidths;
+
+      XLSX.utils.book_append_sheet(wb, ws, "Vault Protocol Export");
+
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       
       const actor = auth.currentUser;
       if (actor) {
-        await logVaultAction(vaultId, actor, AuditAction.EXPORT, AuditResourceType.ITEM, null, `Exported ${items.length} records to password-protected Excel.`);
+        await logVaultAction(vaultId, actor, AuditAction.EXPORT, AuditResourceType.ITEM, null, `Exported ${items.length} records to secure Excel spreadsheet.`);
       }
 
       const url = window.URL.createObjectURL(blob);
@@ -8982,7 +8989,7 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
       a.click();
       window.URL.revokeObjectURL(url);
       
-      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "EXFILTRATION COMPLETE. Use your encrypted answer sequence as the password.", type: 'success' } }));
+      window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "EXFILTRATION COMPLETE. Vault records successfully exported to Excel.", type: 'success' } }));
       onClose();
     } catch (err) {
       console.error(err);
