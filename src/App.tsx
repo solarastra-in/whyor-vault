@@ -193,7 +193,17 @@ const onSnapshot = (ref: any, onNext: (snap: any) => void, onError?: (err: any) 
       activeSnapshotListeners = activeSnapshotListeners.filter(l => l !== listenerRecord);
     };
   } else {
-    return fbOnSnapshot(ref, onNext, onError);
+    return fbOnSnapshot(
+      ref, 
+      onNext, 
+      (err) => {
+        if (onError) {
+          onError(err);
+        } else {
+          console.debug("Firestore live listener state update:", err?.code || err?.message || err);
+        }
+      }
+    );
   }
 };
 
@@ -1431,310 +1441,334 @@ export default function App() {
     );
   }
 
+  // Compute single active view for clean AnimatePresence mode="wait" transitions
+  let activeView: React.ReactNode = null;
+
+  if (loading || globalLoading) {
+    activeView = (
+      <motion.div 
+        key="global-loader"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950"
+      >
+        <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-6" />
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] animate-pulse">Initializing Protocol...</p>
+      </motion.div>
+    );
+  } else if (((!user && screen === 'auth') || isEnteringVault)) {
+    activeView = (
+      <motion.div
+        key="cinematic-vault-landing-wrapper"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="w-full min-h-screen"
+      >
+        <CinematicVaultLanding 
+          onLogin={login} 
+          onSandboxLogin={() => {
+            setIsEnteringVault(true);
+            triggerSandboxLogin();
+          }}
+          onShowGuide={() => setIsHowItWorksOpen(true)}
+          loginPending={loginPending}
+          popupBlockedIndicator={popupBlockedIndicator}
+          networkErrorIndicator={networkErrorIndicator}
+          onAdminClick={() => setScreen('admin_login')}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          isOpening={isEnteringVault}
+          onOpeningComplete={() => {
+            setIsEnteringVault(false);
+          }}
+        />
+      </motion.div>
+    );
+  } else if (screen === 'admin_login' && !isEnteringVault) {
+    activeView = (
+      <motion.div
+        key="admin-login-screen-wrapper"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="w-full min-h-screen"
+      >
+        <AdminLoginScreen 
+          onLoginSuccess={() => setScreen('admin_dashboard')}
+          onBackToCustomerLogin={() => {
+            logout();
+          }}
+        />
+      </motion.div>
+    );
+  } else if (screen === 'admin_dashboard' && !isEnteringVault) {
+    activeView = (
+      <motion.div
+        key="admin-dashboard-screen-wrapper"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.3 }}
+        className="min-h-screen bg-slate-950 text-white flex flex-col w-full"
+      >
+        <header className="bg-slate-900 border-b border-slate-800 p-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded bg-emerald-950/40 border border-emerald-500/35 flex items-center justify-center">
+              <Sliders className="h-4 w-4 text-emerald-400" />
+            </div>
+            <div className="text-left">
+              <h1 className="text-xs font-black font-display text-white uppercase tracking-wider">SYSTEM CENTRAL CONSOLE</h1>
+              <p className="text-[9px] text-slate-500 uppercase font-mono">Logged in as system administrator</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              className="flex items-center justify-center p-2.5 rounded-apex bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-750 cursor-pointer"
+              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            >
+              {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-4 rounded-apex transition-all border border-slate-750"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Logout
+            </button>
+          </div>
+        </header>
+        <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full p-8 bg-slate-950">
+          <AdminPanel 
+            userId="admin-session"
+            vaultId="admin-vault"
+            systemConfig={systemConfig}
+          />
+        </div>
+      </motion.div>
+    );
+  } else if (user && hasAcceptedTerms === false && !isEnteringVault) {
+    activeView = (
+      <motion.div
+        key="terms-modal-wrapper"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50"
+      >
+        <TermsModal onAccept={handleAcceptTerms} onLogout={logout} />
+      </motion.div>
+    );
+  } else if (user && hasAcceptedTerms === true && !isEnteringVault) {
+    if (screen === 'setup') {
+      activeView = (
+        <motion.div
+          key="setup-screen-wrapper"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.3, ease: 'easeInOut' }}
+          className="w-full flex justify-center"
+        >
+          <SetupScreen 
+            user={user} 
+            onComplete={() => findVault(user)} 
+            onLogout={logout}
+            onVaultCreated={async (config, key, signature, dekHkdfBase) => {
+              try {
+                localStorage.setItem(await localConfigCacheKey(user.uid), JSON.stringify(config));
+              } catch (storageErr) {
+                console.warn("Failed to write vault configuration to localStorage", storageErr);
+              }
+              setVaultConfig(config);
+              setLastActivity(Date.now());
+              setActiveKey(key);
+              setActiveDekHkdfBase(dekHkdfBase);
+              if (signature) setActiveSignature(signature);
+              setVaultId(user.uid);
+              setIsLocked(false);
+              setScreen('vault');
+              setIsMovieVaultOpeningOpen(true);
+            }}
+          />
+        </motion.div>
+      );
+    } else if (screen === 'verify' && vaultConfig && vaultId) {
+      activeView = (
+        <motion.div
+          key="verify-screen-wrapper"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.3, ease: 'easeInOut' }}
+          className="w-full flex justify-center"
+        >
+          <VerifyScreen 
+            config={vaultConfig}
+            userId={user.uid}
+            vaultId={vaultId}
+            onUnlock={(key, entries, signature, dekHkdfBase) => {
+              setLastActivity(Date.now());
+              setActiveKey(key);
+              setActiveDekHkdfBase(dekHkdfBase);
+              setDecryptedEntries(entries);
+              if (signature) setActiveSignature(signature);
+              setIsLocked(false);
+              setScreen('vault');
+              setIsMovieVaultOpeningOpen(true);
+            }}
+            onCorrupt={(source?: string) => {
+              setMasterKeyTransition({
+                isOpen: true,
+                sourceContext: typeof source === 'string' ? source : "Verification Challenge Secondary Fallback",
+                targetAction: () => setScreen('corrupted')
+              });
+            }}
+            onLogout={logout}
+            onStartGuidedTour={() => setIsGuidedTourOpen(true)}
+          />
+        </motion.div>
+      );
+    } else if (screen === 'member_verify' && vaultConfig && vaultId) {
+      activeView = (
+        <motion.div
+          key="member-verify-screen-wrapper"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.3, ease: 'easeInOut' }}
+          className="w-full flex justify-center"
+        >
+          <MemberVerifyScreen
+            config={vaultConfig}
+            userId={user.uid}
+            userEmail={user.email || ''}
+            vaultId={vaultId}
+            onMemberUnlock={async (partitionKeyMap) => {
+              setLastActivity(Date.now());
+              const placeholder = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+              );
+              setActiveKey(placeholder);
+              setActiveDekHkdfBase(undefined);
+              setActivePartitionKeyMap(partitionKeyMap);
+              setDecryptedEntries([]);
+              setIsLocked(false);
+              setScreen('vault');
+              setIsMovieVaultOpeningOpen(true);
+            }}
+            onLogout={logout}
+          />
+        </motion.div>
+      );
+    } else if (screen === 'corrupted' && vaultConfig && vaultId) {
+      activeView = (
+        <motion.div
+          key="corrupted-screen-wrapper"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.3, ease: 'easeInOut' }}
+          className="w-full flex justify-center"
+        >
+          <CorruptedScreen 
+            config={vaultConfig}
+            userId={user.uid}
+            vaultId={vaultId}
+            onRecover={(key, entries, signature, answers, dekHkdfBase) => {
+              setLastActivity(Date.now());
+              setActiveKey(key);
+              setActiveDekHkdfBase(dekHkdfBase);
+              setDecryptedEntries(entries);
+              if (signature) setActiveSignature(signature);
+              if (answers) {
+                setRecoveredAnswers(answers);
+                setShowAnswersBanner(true);
+              }
+              setIsLocked(false);
+              setScreen('vault');
+              setIsMovieVaultOpeningOpen(true);
+            }}
+            onLogout={logout}
+            onFallbackToQA={() => setScreen('verify')}
+            onReplayTransition={() => {
+              setMasterKeyTransition({
+                isOpen: true,
+                sourceContext: "Master Key Recovery Enclave",
+                targetAction: () => setMasterKeyTransition(null)
+              });
+            }}
+          />
+        </motion.div>
+      );
+    } else if (screen === 'vault' && activeKey && vaultId && vaultConfig) {
+      // Calculate progressive grayscale when session is close to timeout (final 60s)
+      const isTimeoutDangerZone = remainingSecs !== null && remainingSecs <= 60 && remainingSecs > 0;
+      const timeoutRatio = isTimeoutDangerZone ? (60 - remainingSecs) / 60 : 0;
+      const grayscalePercentage = Math.min(100, Math.floor(timeoutRatio * 100));
+      const blurAmount = (timeoutRatio * 1.5).toFixed(2);
+      const opacityAmount = (1.0 - (timeoutRatio * 0.15)).toFixed(2);
+
+      const dynamicStyle = {
+        filter: isTimeoutDangerZone ? `grayscale(${grayscalePercentage}%) blur(${blurAmount}px)` : 'none',
+        opacity: isTimeoutDangerZone ? parseFloat(opacityAmount) : 1,
+        transition: 'filter 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+      };
+
+      activeView = (
+        <motion.div
+          key="vault-screen-wrapper"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.4 }}
+          className="w-full"
+          style={dynamicStyle}
+        >
+          <VaultMain 
+            key="vault-main"
+            entries={decryptedEntries}
+            encryptionKey={activeKey}
+            dekHkdfBase={activeDekHkdfBase}
+            partitionKeyMap={activePartitionKeyMap}
+            combinedSignature={activeSignature}
+            userId={user.uid}
+            userEmail={user.email || 'anonymous@why-or-vault.com'}
+            vaultId={vaultId}
+            onLock={logout}
+            onQuickLock={handleQuickLock}
+            config={vaultConfig}
+            onShowGuide={() => setIsHowItWorksOpen(true)}
+            onReplayVaultAnimation={() => setIsMovieVaultOpeningOpen(true)}
+            onStartGuidedTour={() => setIsGuidedTourOpen(true)}
+            idleTimeoutMins={idleTimeoutMins}
+            setIdleTimeoutMins={setIdleTimeoutMins}
+            remainingSecs={remainingSecs}
+            onExtendSession={() => {
+              setLastActivity(Date.now());
+              setExtendCount(prev => prev + 1);
+            }}
+            extendCount={extendCount}
+            recoveredAnswers={recoveredAnswers}
+            setRecoveredAnswers={setRecoveredAnswers}
+            showAnswersBanner={showAnswersBanner}
+            setShowAnswersBanner={setShowAnswersBanner}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+          />
+        </motion.div>
+      );
+    }
+  }
+
   return (
     <div className="min-h-screen font-sans selection:bg-primary-100 selection:text-primary-900 bg-slate-950">
       <AnimatePresence mode="wait">
-        {(loading || globalLoading) && (
-          <motion.div 
-            key="global-loader"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950"
-          >
-            <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-6" />
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] animate-pulse">Initializing Protocol...</p>
-          </motion.div>
-        )}
-
-        {((!user && screen === 'auth') || isEnteringVault) && !loading && (
-          <CinematicVaultLanding 
-            key="cinematic-vault-landing"
-            onLogin={login} 
-            onSandboxLogin={() => {
-              setIsEnteringVault(true);
-              triggerSandboxLogin();
-            }}
-            onShowGuide={() => setIsHowItWorksOpen(true)}
-            loginPending={loginPending}
-            popupBlockedIndicator={popupBlockedIndicator}
-            networkErrorIndicator={networkErrorIndicator}
-            onAdminClick={() => setScreen('admin_login')}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-            isOpening={isEnteringVault}
-            onOpeningComplete={() => {
-              setIsEnteringVault(false);
-            }}
-          />
-        )}
-
-        {screen === 'admin_login' && !isEnteringVault && (
-          <AdminLoginScreen 
-            onLoginSuccess={() => setScreen('admin_dashboard')}
-            onBackToCustomerLogin={() => {
-              logout();
-            }}
-          />
-        )}
-
-        {screen === 'admin_dashboard' && !isEnteringVault && (
-          <motion.div
-            key="admin-dashboard-screen-wrapper"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="min-h-screen bg-slate-950 text-white flex flex-col w-full"
-          >
-            <header className="bg-slate-900 border-b border-slate-800 p-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded bg-emerald-950/40 border border-emerald-500/35 flex items-center justify-center">
-                  <Sliders className="h-4 w-4 text-emerald-400" />
-                </div>
-                <div className="text-left">
-                  <h1 className="text-xs font-black font-display text-white uppercase tracking-wider">SYSTEM CENTRAL CONSOLE</h1>
-                  <p className="text-[9px] text-slate-500 uppercase font-mono">Logged in as system administrator</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={toggleTheme}
-                  className="flex items-center justify-center p-2.5 rounded-apex bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-750 cursor-pointer"
-                  title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-                >
-                  {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={logout}
-                  className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-2 px-4 rounded-apex transition-all border border-slate-750"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  Logout
-                </button>
-              </div>
-            </header>
-            <div className="flex-1 overflow-y-auto max-w-7xl mx-auto w-full p-8 bg-slate-950">
-              <AdminPanel 
-                userId="admin-session"
-                vaultId="admin-vault"
-                systemConfig={systemConfig}
-              />
-            </div>
-          </motion.div>
-        )}
-        
-        {user && hasAcceptedTerms === false && !isEnteringVault && (
-          <TermsModal key="terms-modal" onAccept={handleAcceptTerms} onLogout={logout} />
-        )}
-
-        {user && hasAcceptedTerms === true && !isEnteringVault && (
-          <AnimatePresence mode="wait">
-            {screen === 'setup' && (
-              <motion.div
-                key="setup-screen-wrapper"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="w-full flex justify-center"
-              >
-                <SetupScreen 
-                  key="setup-screen"
-                  user={user} 
-                  onComplete={() => findVault(user)} 
-                  onLogout={logout}
-                  onVaultCreated={async (config, key, signature, dekHkdfBase) => {
-                    try {
-                      localStorage.setItem(await localConfigCacheKey(user.uid), JSON.stringify(config));
-                    } catch (storageErr) {
-                      console.warn("Failed to write vault configuration to localStorage", storageErr);
-                    }
-                    setVaultConfig(config);
-                    setLastActivity(Date.now());
-                    setActiveKey(key);
-                    setActiveDekHkdfBase(dekHkdfBase);
-                    if (signature) setActiveSignature(signature);
-                    setVaultId(user.uid);
-                    setIsLocked(false);
-                    setScreen('vault');
-                    setIsMovieVaultOpeningOpen(true);
-                  }}
-                />
-              </motion.div>
-            )}
-
-            {screen === 'verify' && vaultConfig && vaultId && (
-              <motion.div
-                key="verify-screen-wrapper"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="w-full flex justify-center"
-              >
-                <VerifyScreen 
-                  key="verify-screen"
-                  config={vaultConfig}
-                  userId={user.uid}
-                  vaultId={vaultId}
-                  onUnlock={(key, entries, signature, dekHkdfBase) => {
-                    setLastActivity(Date.now());
-                    setActiveKey(key);
-                    setActiveDekHkdfBase(dekHkdfBase);
-                    setDecryptedEntries(entries);
-                    if (signature) setActiveSignature(signature);
-                    setIsLocked(false);
-                    setScreen('vault');
-                    setIsMovieVaultOpeningOpen(true);
-                  }}
-                  onCorrupt={(source?: string) => {
-                    setMasterKeyTransition({
-                      isOpen: true,
-                      sourceContext: typeof source === 'string' ? source : "Verification Challenge Secondary Fallback",
-                      targetAction: () => setScreen('corrupted')
-                    });
-                  }}
-                  onLogout={logout}
-                  onStartGuidedTour={() => setIsGuidedTourOpen(true)}
-                />
-              </motion.div>
-            )}
-
-            {screen === 'member_verify' && vaultConfig && vaultId && (
-              <motion.div
-                key="member-verify-screen-wrapper"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="w-full flex justify-center"
-              >
-                <MemberVerifyScreen
-                  key="member-verify-screen"
-                  config={vaultConfig}
-                  userId={user.uid}
-                  userEmail={user.email || ''}
-                  vaultId={vaultId}
-                  onMemberUnlock={async (partitionKeyMap) => {
-                    setLastActivity(Date.now());
-                    const placeholder = await crypto.subtle.generateKey(
-                      { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-                    );
-                    setActiveKey(placeholder);
-                    setActiveDekHkdfBase(undefined);
-                    setActivePartitionKeyMap(partitionKeyMap);
-                    setDecryptedEntries([]);
-                    setIsLocked(false);
-                    setScreen('vault');
-                    setIsMovieVaultOpeningOpen(true);
-                  }}
-                  onLogout={logout}
-                />
-              </motion.div>
-            )}
-
-            {screen === 'corrupted' && vaultConfig && vaultId && (
-              <motion.div
-                key="corrupted-screen-wrapper"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="w-full flex justify-center"
-              >
-                <CorruptedScreen 
-                  key="corrupted-screen"
-                  config={vaultConfig}
-                  userId={user.uid}
-                  vaultId={vaultId}
-                  onRecover={(key, entries, signature, answers, dekHkdfBase) => {
-                    setLastActivity(Date.now());
-                    setActiveKey(key);
-                    setActiveDekHkdfBase(dekHkdfBase);
-                    setDecryptedEntries(entries);
-                    if (signature) setActiveSignature(signature);
-                    if (answers) {
-                      setRecoveredAnswers(answers);
-                      setShowAnswersBanner(true);
-                    }
-                    setIsLocked(false);
-                    setScreen('vault');
-                    setIsMovieVaultOpeningOpen(true);
-                  }}
-                  onLogout={logout}
-                  onFallbackToQA={() => setScreen('verify')}
-                  onReplayTransition={() => {
-                    setMasterKeyTransition({
-                      isOpen: true,
-                      sourceContext: "Master Key Recovery Enclave",
-                      targetAction: () => setMasterKeyTransition(null)
-                    });
-                  }}
-                />
-              </motion.div>
-            )}
-
-            {screen === 'vault' && activeKey && vaultId && vaultConfig && (() => {
-              // Calculate progressive grayscale when session is close to timeout (final 60s)
-              const isTimeoutDangerZone = remainingSecs !== null && remainingSecs <= 60 && remainingSecs > 0;
-              const timeoutRatio = isTimeoutDangerZone ? (60 - remainingSecs) / 60 : 0;
-              const grayscalePercentage = Math.min(100, Math.floor(timeoutRatio * 100));
-              const blurAmount = (timeoutRatio * 1.5).toFixed(2);
-              const opacityAmount = (1.0 - (timeoutRatio * 0.15)).toFixed(2);
-
-              const dynamicStyle = {
-                filter: isTimeoutDangerZone ? `grayscale(${grayscalePercentage}%) blur(${blurAmount}px)` : 'none',
-                opacity: isTimeoutDangerZone ? parseFloat(opacityAmount) : 1,
-                transition: 'filter 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
-              };
-
-              return (
-                <motion.div
-                  key="vault-screen-wrapper"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.4 }}
-                  className="w-full"
-                  style={dynamicStyle}
-                >
-                  <VaultMain 
-                    key="vault-main"
-                    entries={decryptedEntries}
-                    encryptionKey={activeKey}
-                    dekHkdfBase={activeDekHkdfBase}
-                    partitionKeyMap={activePartitionKeyMap}
-                    combinedSignature={activeSignature}
-                    userId={user.uid}
-                    userEmail={user.email || 'anonymous@why-or-vault.com'}
-                    vaultId={vaultId}
-                    onLock={logout}
-                    onQuickLock={handleQuickLock}
-                    config={vaultConfig}
-                    onShowGuide={() => setIsHowItWorksOpen(true)}
-                    onReplayVaultAnimation={() => setIsMovieVaultOpeningOpen(true)}
-                    onStartGuidedTour={() => setIsGuidedTourOpen(true)}
-                    idleTimeoutMins={idleTimeoutMins}
-                    setIdleTimeoutMins={setIdleTimeoutMins}
-                    remainingSecs={remainingSecs}
-                    onExtendSession={() => {
-                      setLastActivity(Date.now());
-                      setExtendCount(prev => prev + 1);
-                    }}
-                    extendCount={extendCount}
-                    recoveredAnswers={recoveredAnswers}
-                    setRecoveredAnswers={setRecoveredAnswers}
-                    showAnswersBanner={showAnswersBanner}
-                    setShowAnswersBanner={setShowAnswersBanner}
-                    theme={theme}
-                    onToggleTheme={toggleTheme}
-                  />
-                </motion.div>
-              );
-            })()}
-          </AnimatePresence>
-        )}
+        {activeView}
       </AnimatePresence>
 
       {isHowItWorksOpen && (

@@ -35,32 +35,29 @@ async function runTests() {
   console.log("\n🧪 RUNNING UNIT: Master Key Validation Policy...");
   
   // Test valid master key format
-  const validKey = "ALPHA!!BRAVO@@5790##WXY"; // Exactly 24 chars, 6 special chars, no repeats/sequences
-  // Wait, let's validate validKey length:
-  // "ALPHA" (5) + "!!" (2) + "BRAVO" (5) + "@@" (2) + "1234" (4) + "##" (2) + "WXY" (3) = 23 characters. Ah, let's make it 24
-  const validKey24 = "ALPHA!!BRAVO@@5790##WXYZ"; // 24 chars!
+  const validKey24 = "ALPHA!!BRAVO@@5790##WXYZ";
   const v1 = validateMasterKey(validKey24);
   assert(v1.valid, `Valid master key should pass validation (Errors: ${v1.errors.join(', ')})`);
 
-  // Test invalid length
-  const invalidLen = "SHORT!!KEY@@";
+  // Test invalid length (< 12 chars)
+  const invalidLen = "SHORT!!KEY";
   const v2 = validateMasterKey(invalidLen);
-  assert(!v2.valid && v2.errors.some(e => e.includes("exactly 24 characters")), "Should reject incorrect master key length");
+  assert(!v2.valid && v2.errors.some(e => e.includes("between 12 and 64 characters")), "Should reject incorrect master key length");
 
-  // Test missing special characters
-  const missingSpecials = "ALPHABRAVO1234567890WXYZ";
+  // Test missing special/digit characters
+  const missingSpecials = "ALPHABRAVOXYZABCDEFG";
   const v3 = validateMasterKey(missingSpecials);
-  assert(!v3.valid && v3.errors.some(e => e.includes("special characters")), "Should reject master keys with fewer than 6 special characters");
+  assert(!v3.valid && v3.errors.some(e => e.includes("number or special character")), "Should reject master keys without numbers or special characters");
 
-  // Test repeated characters
-  const repeatedChars = "ALPHA!!!BRAVO@@1234##WXYZ"; // "!!!" has repeating
-  const v4 = validateMasterKey(repeatedChars);
-  assert(!v4.valid && v4.errors.some(e => e.includes("Repeated characters")), "Should reject master keys with repeated characters consecutive");
+  // Test missing letters
+  const missingLetters = "1234567890!@#$%^&*()";
+  const v4 = validateMasterKey(missingLetters);
+  assert(!v4.valid && v4.errors.some(e => e.includes("at least one letter")), "Should reject master keys without letters");
 
   // Test sequence characters
-  const sequenceChars = "ALPHA!!BRAVO@@123##WXYZ"; // "123" sequence -> wait, validateMasterKey checks /123|abc|qwerty|asdf/i
+  const sequenceChars = "ALPHA!!BRAVO@@1234##WXYZ";
   const v5 = validateMasterKey(sequenceChars);
-  assert(!v5.valid && v5.errors.some(e => e.includes("Common sequences")), "Should reject master keys with predictable sequences path");
+  assert(!v5.valid && v5.errors.some(e => e.includes("sequence detected")), "Should reject master keys with predictable sequences");
 
 
   // --- UNIT TESTS: 2. MASTER KEY AUTO-GENERATION ---
@@ -120,6 +117,32 @@ async function runTests() {
 
   const eqOther = timingSafeEqual(hash1, distinctHash);
   assert(!eqOther, "Timing-safe equal must return false for distinct hashes");
+
+
+  // --- UNIT TESTS: 4b. CLAIM 13: 20-BIT ENTROPY ENFORCEMENT & PADDING ---
+  console.log("\n🧪 RUNNING UNIT: Claim 13 Mandatory 20-Bit Entropy & Deterministic Padding...");
+  try {
+    const { estimateEntropyBits, validateAnswerEntropy, padAnswerTo20BitEntropy, MIN_ANSWER_ENTROPY_BITS } = await import('./lib/vaultKeys');
+    assert(MIN_ANSWER_ENTROPY_BITS === 20, "Claim 13 entropy threshold is strictly 20 bits");
+
+    // Rejection of raw weak answers without padding
+    const rawWeak = validateAnswerEntropy("cat");
+    assert(!rawWeak.valid, "Raw weak answers below 20 bits are rejected without padding");
+
+    // Deterministic padding elevates below-threshold answers to >= 20 bits
+    const paddedCold = padAnswerTo20BitEntropy("cold", 4);
+    assert(estimateEntropyBits(paddedCold) >= 20, "Deterministic padding guarantees at least 20 bits entropy");
+    
+    const paddedValidation = validateAnswerEntropy("cold", 4, true);
+    assert(paddedValidation.valid, "Answer with padding enabled passes Claim 13 validation");
+
+    // Naturally strong answer retains original text
+    const strongAns = "MyGrandmotherLivedInJaipur";
+    assert(padAnswerTo20BitEntropy(strongAns, 0) === strongAns, "Naturally strong answers require no padding");
+  } catch (err: any) {
+    console.error("Claim 13 test failed:", err);
+    assert(false, "Claim 13 entropy test failed");
+  }
 
 
   // --- UNIT TESTS: 5. END-TO-END SECURITY CHALLENGE TRANSITION ---
