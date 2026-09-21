@@ -137,7 +137,7 @@ async function runTests() {
     // Setup sequence
     const answerSalts = Array.from({ length: 10 }, () => "Salt-" + Math.random().toString(36).substring(2, 6));
     const setupHashedAnswers = await Promise.all(
-      originalAnswers.map((ans, i) => hashAnswer(ans, answerSalts[i]))
+      originalAnswers.map((ans, i) => hashAnswer(ans, answerSalts[i], i))
     );
     const setupCombinedSig = await computeSignature(setupHashedAnswers);
     const globalSalt = "globalSaltAlphaBetaGamma";
@@ -145,7 +145,7 @@ async function runTests() {
 
     // Authentication simulation sequence
     const verifyHashedAnswers = await Promise.all(
-      userEnteredVerifyAnswers.map((ans, i) => hashAnswer(ans, answerSalts[i]))
+      userEnteredVerifyAnswers.map((ans, i) => hashAnswer(ans, answerSalts[i], i))
     );
     const verifyCombinedSig = await computeSignature(verifyHashedAnswers);
     const verifySignatureHash = await hmacSignature(verifyCombinedSig, globalSalt, defaultPepper);
@@ -159,7 +159,7 @@ async function runTests() {
       "toyota", "Software Developer", "blue", "PEPPERONI", "violin"
     ];
     const imperfectHashed = await Promise.all(
-      imperfectAnswers.map((ans, i) => hashAnswer(ans, answerSalts[i]))
+      imperfectAnswers.map((ans, i) => hashAnswer(ans, answerSalts[i], i))
     );
     const imperfectCombined = await computeSignature(imperfectHashed);
     const imperfectSigHash = await hmacSignature(imperfectCombined, globalSalt, defaultPepper);

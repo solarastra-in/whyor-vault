@@ -2471,22 +2471,7 @@ function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: Use
   const [deliveryProfile, setDeliveryProfile] = useState<'consumer' | 'pro'>('consumer');
   const [masterKey, setMasterKey] = useState('');
   const [duressKey, setDuressKey] = useState('');
-  const [answers, setAnswers] = useState<string[]>(() => {
-    try {
-      const saved = sessionStorage.getItem('whyor_vault_setup_answers');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length === 10) return parsed;
-      }
-    } catch {}
-    return new Array(10).fill('');
-  });
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem('whyor_vault_setup_answers', JSON.stringify(answers));
-    } catch {}
-  }, [answers]);
+  const [answers, setAnswers] = useState<string[]>(new Array(10).fill(''));
   const [visibleAnswers, setVisibleAnswers] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [validation, setValidation] = useState<{ valid: boolean; errors: string[] }>({ valid: false, errors: [] });
@@ -2667,9 +2652,9 @@ SAFEKEEPING PROTOCOL:
       return;
     }
 
-    // Claim 13: Passphrase entropy enforcement at creation - validate BEFORE expensive crypto
+    // Claim 13: Passphrase entropy enforcement at creation - 20-bit rule with deterministic padding
     for (let i = 0; i < answers.length; i++) {
-      const check = validateAnswerEntropy(answers[i]);
+      const check = validateAnswerEntropy(answers[i], i, true);
       if (!check.valid) {
         window.dispatchEvent(new CustomEvent('app-notify', {
           detail: {
@@ -2692,9 +2677,9 @@ SAFEKEEPING PROTOCOL:
       // 3. Generate 10 unique salts for answers
       const answerSalts = new Array(10).fill(0).map(() => generateSalt());
       
-      // 4. Hash each answer with its individual salt
+      // 4. Hash each answer with its individual salt and deterministic 20-bit entropy padding
       const hashedAnswers = await Promise.all(
-        answers.map(async (a, i) => await hashAnswer(a, answerSalts[i]))
+        answers.map(async (a, i) => await hashAnswer(a, answerSalts[i], i))
       );
       
        // 5. Generate Combined Signature
@@ -2804,10 +2789,6 @@ SAFEKEEPING PROTOCOL:
       }).catch(e => console.warn("Failed to update vault registry index:", e));
       
       await logVaultAction(user.uid, user, AuditAction.CREATE, AuditResourceType.VAULT, user.uid, "Phase 1: Vault Genesis Protocol Completed with Duress support.");
-      
-      try {
-        sessionStorage.removeItem('whyor_vault_setup_answers');
-      } catch {}
       
       onVaultCreated(configPayload, sessionKey, combinedSignature, v2KeyMaterial.dekHkdfBase);
     } catch (e: any) {
@@ -4884,7 +4865,7 @@ function VerifyScreen({ config, userId, vaultId, onUnlock, onCorrupt, onLogout, 
         new Array(10).fill(0).map(async (_, idx) => {
           const salt = salts[idx] || '';
           const ans = allAnswers[idx] || '';
-          const hashed = await hashAnswer(ans, salt);
+          const hashed = await hashAnswer(ans, salt, idx);
           console.log(`Hash index ${idx}: ans-len=${ans.length}, hash-preview=${hashed.substring(0,8)}...`);
           return hashed;
         })
@@ -8918,7 +8899,7 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
       for (let i = 0; i < 3; i++) {
         const idx = challengeIndices[i];
         if (idx === undefined) throw new Error("Challenge sequence failure.");
-        const hash = await hashAnswer(challengeAnswers[i], salts[idx] || vaultConfig.salt);
+        const hash = await hashAnswer(challengeAnswers[i], salts[idx] || vaultConfig.salt, idx);
         if (hash !== answers[idx]) {
           throw new Error(`Control Point ${i + 1} validation failed.`);
         }
