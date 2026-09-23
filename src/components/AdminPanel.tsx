@@ -1843,46 +1843,57 @@ export default function AdminPanel({
               Establish a custom overriding password block for your sovereign control panel. If forgotten, you will implicitly fall back to the initial hardcoded configuration state.
             </p>
 
-            <div className="grid grid-cols-1 gap-5">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 ml-1">New Control Password</label>
-                <div className="relative">
-                  <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                  <input
-                    type="password"
-                    value={newAdminPassword}
-                    onChange={e => setNewAdminPassword(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs font-mono text-white focus:border-rose-500 transition-colors placeholder:text-slate-600 outline-none"
-                    placeholder="Enter new master override string..."
-                  />
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveAdminPassword();
+              }}
+            >
+              <div className="grid grid-cols-1 gap-5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 ml-1">New Control Password</label>
+                  <div className="relative">
+                    <Terminal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <input
+                      type="password"
+                      name="newAdminPassword"
+                      autoComplete="new-password"
+                      value={newAdminPassword}
+                      onChange={e => setNewAdminPassword(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs font-mono text-white focus:border-rose-500 transition-colors placeholder:text-slate-600 outline-none"
+                      placeholder="Enter new master override string..."
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 mt-2">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 ml-1">Verify Control Password</label>
+                  <div className="relative">
+                    <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <input
+                      type="password"
+                      name="newAdminPasswordConfirm"
+                      autoComplete="new-password"
+                      value={newAdminPasswordConfirm}
+                      onChange={e => setNewAdminPasswordConfirm(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs font-mono text-white focus:border-rose-500 transition-colors placeholder:text-slate-600 outline-none"
+                      placeholder="Verify new string matches..."
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-1.5 mt-2">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-300 ml-1">Verify Control Password</label>
-                <div className="relative">
-                  <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                  <input
-                    type="password"
-                    value={newAdminPasswordConfirm}
-                    onChange={e => setNewAdminPasswordConfirm(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs font-mono text-white focus:border-rose-500 transition-colors placeholder:text-slate-600 outline-none"
-                    placeholder="Verify new string matches..."
-                  />
-                </div>
+              <div className="mt-8 pt-5 border-t border-slate-800 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isSavingAdmin || !newAdminPassword}
+                  className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rose-900/30 cursor-pointer"
+                >
+                  {isSavingAdmin ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSavingAdmin ? 'Committing...' : 'Commit Cryptographic String'}
+                </button>
               </div>
-            </div>
-
-            <div className="mt-8 pt-5 border-t border-slate-800 flex justify-end">
-              <button
-                onClick={handleSaveAdminPassword}
-                disabled={isSavingAdmin || !newAdminPassword}
-                className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-rose-900/30"
-              >
-                {isSavingAdmin ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {isSavingAdmin ? 'Committing...' : 'Commit Cryptographic String'}
-              </button>
-            </div>
+            </form>
           </div>
         </div>
       )}

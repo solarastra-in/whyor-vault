@@ -206,21 +206,21 @@ export default function PaywallModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl">
+    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] flex flex-col my-auto">
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50" />
         
         {/* Close Button */}
         <button 
           onClick={onClose}
           type="button"
-          className="absolute right-6 top-6 p-2 text-slate-500 hover:text-white hover:bg-slate-800 transition-all rounded-lg"
+          className="absolute right-4 top-4 sm:right-6 sm:top-6 p-2 text-slate-500 hover:text-white hover:bg-slate-800 transition-all rounded-lg z-10"
         >
           <X className="h-4 w-4" />
         </button>
 
         {step === 'plan' ? (
-          <form onSubmit={handleProcessPayment} className="p-8">
+          <form onSubmit={handleProcessPayment} className="p-4 sm:p-6 md:p-8 flex-1 overflow-y-auto custom-scrollbar">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-indigo-600/10 border border-indigo-500/20 rounded-xl flex items-center justify-center text-indigo-400">
                 <Shield className="h-5 w-5" />
@@ -424,7 +424,7 @@ export default function PaywallModal({
             </button>
           </form>
         ) : (
-          <div className="p-8 text-center flex flex-col items-center justify-center">
+          <div className="p-4 sm:p-6 md:p-8 text-center flex flex-col items-center justify-center flex-1 overflow-y-auto custom-scrollbar">
             <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 rounded-full flex items-center justify-center mb-6 text-emerald-400 animate-bounce">
               <CheckCircle className="h-10 w-10" />
             </div>

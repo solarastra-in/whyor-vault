@@ -666,6 +666,19 @@ interface CinematicQuestionExperienceProps {
   submitLabel?: string;
 }
 
+const HIGH_ENTROPY_SAMPLE_ANSWERS = [
+  "Shadow-Wolf-9842",
+  "Blue-Summit-Orion-2015",
+  "Grandmother-Maple-Meadow-44",
+  "Velvet-Midnight-Compass",
+  "Neon-Cosmos-Emerald-77",
+  "Atlas-Titan-Aurora-33",
+  "Starlight-Harbor-Phoenix",
+  "Silver-Falcon-Horizon-19",
+  "Golden-Obsidian-Canyon",
+  "Echo-Whisper-Cipher-88"
+];
+
 export default function CinematicQuestionExperience({
   answers,
   setAnswers,
@@ -778,22 +791,30 @@ export default function CinematicQuestionExperience({
 
   const entropy = getEntropyLevel(currentAnswer, activeIndex);
 
+  const handleAutoFillSamples = () => {
+    questionFX.playAllCompleteChord();
+    setAnswers([...HIGH_ENTROPY_SAMPLE_ANSWERS]);
+    window.dispatchEvent(new CustomEvent('app-notify', {
+      detail: { message: "All 10 cryptographic shards populated with high-entropy passphrases.", type: 'success' }
+    }));
+  };
+
   const handleSubmitClick = () => {
     for (let i = 0; i < SECURITY_QUESTIONS.length; i++) {
       const val = (answers[i] || '').trim();
       if (!val) {
         setActiveIndex(i);
-        setViewMode('single');
+        setViewMode('cinema');
         questionFX.playErrorBeep();
         window.dispatchEvent(new CustomEvent('app-notify', {
-          detail: { message: `Shard #${i + 1} is empty. Please answer all 10 questions.`, type: 'error' }
+          detail: { message: `Shard #${i + 1} is empty. Please answer all 10 security shards to commit the enclave.`, type: 'error' }
         }));
         return;
       }
       const check = validateAnswerEntropy(val, i, true);
       if (!check.valid) {
         setActiveIndex(i);
-        setViewMode('single');
+        setViewMode('cinema');
         questionFX.playErrorBeep();
         window.dispatchEvent(new CustomEvent('app-notify', {
           detail: { 
@@ -827,7 +848,18 @@ export default function CinematicQuestionExperience({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+          {/* Quick Auto-Fill Demo Shards button */}
+          <button
+            type="button"
+            onClick={handleAutoFillSamples}
+            className="px-2.5 py-1.5 rounded-lg bg-indigo-950/60 border border-indigo-800/80 hover:border-indigo-600 text-indigo-300 hover:text-white transition-all text-[11px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm"
+            title="Auto-fill all 10 security shards with high-entropy passphrases"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+            <span>Fill 10 Shards</span>
+          </button>
+
           {/* Mute Toggle */}
           <button
             type="button"
@@ -1205,13 +1237,13 @@ export default function CinematicQuestionExperience({
 
         <button
           type="button"
-          disabled={loading || !isAllAnswered}
+          disabled={loading}
           onClick={handleSubmitClick}
           className={cn(
             "w-full sm:flex-1 py-4 px-6 rounded-2xl font-mono text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2.5 transition-all shadow-xl cursor-pointer",
             isAllAnswered && !loading
               ? "bg-gradient-to-r from-indigo-600 via-indigo-500 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white shadow-indigo-900/50 scale-[1.01]"
-              : "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50"
+              : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-700"
           )}
         >
           {loading ? (
@@ -1219,7 +1251,7 @@ export default function CinematicQuestionExperience({
           ) : isAllAnswered ? (
             <Sparkles className="h-4 w-4 text-emerald-300 animate-spin" />
           ) : (
-            <Lock className="h-4 w-4 text-slate-500" />
+            <Lock className="h-4 w-4 text-amber-400" />
           )}
           <span>
             {loading ? "INITIALIZING ENCLAVE..." : isAllAnswered ? submitLabel : `COMPLETE ALL 10 SHARDS (${answeredCount}/10)`}

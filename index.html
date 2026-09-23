@@ -3,6 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        try {
+          // Intercept unload registration across all EventTargets (window, document, body)
+          // to comply with modern Chromium Permissions-Policy: unload=() for bfcache
+          var originalAdd = EventTarget.prototype.addEventListener;
+          var originalRemove = EventTarget.prototype.removeEventListener;
+
+          EventTarget.prototype.addEventListener = function(type, listener, options) {
+            if (type === 'unload') {
+              return originalAdd.call(this, 'pagehide', listener, options);
+            }
+            return originalAdd.call(this, type, listener, options);
+          };
+
+          EventTarget.prototype.removeEventListener = function(type, listener, options) {
+            if (type === 'unload') {
+              return originalRemove.call(this, 'pagehide', listener, options);
+            }
+            return originalRemove.call(this, type, listener, options);
+          };
+
+          // Protect onunload property assignment
+          Object.defineProperty(window, 'onunload', {
+            get: function() { return window._safeOnUnload || null; },
+            set: function(fn) {
+              window._safeOnUnload = fn;
+              if (typeof fn === 'function') {
+                window.addEventListener('pagehide', fn);
+              }
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {}
+
+        // Global filter for browser extension message channel disconnections and disabled dev WebSockets
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason;
+          var msg = String((reason && (reason.message || reason)) || '');
+          if (
+            msg.indexOf('WebSocket') !== -1 ||
+            msg.indexOf('message channel closed') !== -1 ||
+            msg.indexOf('A listener indicated an asynchronous response') !== -1 ||
+            msg.indexOf('QUIC') !== -1 ||
+            msg.indexOf('Permissions policy violation') !== -1
+          ) {
+            event.preventDefault();
+          }
+        });
+      })();
+    </script>
     <title>WhyOr Vault — Zero-Knowledge Family Vault for Wills, Deeds &amp; Digital Assets</title>
     <meta name="description" content="WhyOr Vault is a zero-knowledge private estate vault built for cryptographic inheritance, granular heir access management, and dead man switch automation. Securely store and delegate access to deeds, wills, trusts, and digital assets." />
     <link rel="canonical" href="https://vault.whyor.in/" />

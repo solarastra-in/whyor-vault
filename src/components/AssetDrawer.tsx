@@ -78,10 +78,10 @@ export const AssetDrawer: React.FC<AssetDrawerProps> = ({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl z-[95] flex flex-col overflow-hidden text-slate-200"
+            className="fixed top-0 right-0 bottom-0 w-full max-w-xl bg-slate-900 border-l border-slate-800 shadow-2xl z-[95] flex flex-col h-full max-h-[100dvh] overflow-hidden text-slate-200"
           >
             {/* Drawer Header */}
-            <div className="p-6 border-b border-slate-800 bg-slate-950/60 relative">
+            <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-950/60 relative shrink-0">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 shadow-inner">
@@ -169,7 +169,7 @@ export const AssetDrawer: React.FC<AssetDrawerProps> = ({
             </div>
 
             {/* Drawer Body Content */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-6">
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto custom-scrollbar space-y-6">
               {/* TAB 1: DETAILS */}
               {activeTab === 'details' && (
                 <div className="space-y-4">

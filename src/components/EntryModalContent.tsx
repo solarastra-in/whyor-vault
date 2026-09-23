@@ -190,6 +190,8 @@ export function EntryModalContent({
             <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1.5 text-left">Online Portal Password</label>
             <input 
               type="password"
+              name="onlinePortalPassword"
+              autoComplete="new-password"
               value={formData.password || ''} 
               onChange={(e) => updateField('password', e.target.value)} 
               className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-indigo-600"
@@ -310,6 +312,8 @@ export function EntryModalContent({
             <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1.5 text-left font-sans">Online Banking Password</label>
             <input 
               type="password"
+              name="onlineBankingPassword"
+              autoComplete="new-password"
               value={formData.password || ''} 
               onChange={(e) => updateField('password', e.target.value)} 
               className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-300 font-mono outline-none focus:border-teal-600 font-sans"
@@ -1180,7 +1184,7 @@ export function EntryModalContent({
       </div>
 
       {/* 3. Common Legal Structuring & Access Enclave parameters */}
-      <div className="p-6 bg-slate-955/40 border border-slate-850 rounded-xl space-y-6">
+      <div className="p-4 sm:p-6 bg-slate-955/40 border border-slate-850 rounded-xl space-y-6">
         <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em] mb-2 text-left flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-indigo-400" /> Ownership, Trust &amp; Sharing Escrow</h4>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

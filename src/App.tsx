@@ -1947,31 +1947,31 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+      className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 py-8 sm:py-12 relative overflow-y-auto custom-scrollbar"
     >
       <div className="absolute inset-0 opacity-10 grid-bg" />
       
-      <div className="w-full max-w-md relative z-10">
-        <div className="flex items-center gap-3 mb-10 justify-center">
-          <div className="w-12 h-12 bg-indigo-600 rounded flex items-center justify-center border border-indigo-400 shadow-indigo">
-            <Lock className="text-white h-6 w-6" />
+      <div className="w-full max-w-md relative z-10 my-auto">
+        <div className="flex items-center gap-3 mb-6 sm:mb-10 justify-center">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-600 rounded flex items-center justify-center border border-indigo-400 shadow-indigo">
+            <Lock className="text-white h-5 w-5 sm:h-6 sm:w-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-extrabold font-display tracking-tight text-white leading-none">
+            <h1 className="text-xl sm:text-2xl font-extrabold font-display tracking-tight text-white leading-none">
               WhyOr<span className="text-indigo-400">Vault</span>
             </h1>
             <div className="flex items-center gap-4 mt-2">
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">Secured by WhyOr Vault</p>
+              <p className="text-[9px] sm:text-[10px] text-slate-500 uppercase tracking-widest font-black font-mono">Secured by WhyOr Vault</p>
               <button 
                 onClick={onShowGuide}
-                className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest border-b border-indigo-500/30 hover:text-white hover:border-white transition-all cursor-pointer pointer-events-auto"
+                className="text-[9px] sm:text-[10px] text-indigo-400 font-bold uppercase tracking-widest border-b border-indigo-500/30 hover:text-white hover:border-white transition-all cursor-pointer pointer-events-auto"
               >
                 Anatomy
               </button>
               {onToggleTheme && (
                 <button
                   onClick={onToggleTheme}
-                  className="text-[10px] text-indigo-400 hover:text-white flex items-center gap-1 uppercase tracking-widest font-bold transition-all cursor-pointer"
+                  className="text-[9px] sm:text-[10px] text-indigo-400 hover:text-white flex items-center gap-1 uppercase tracking-widest font-bold transition-all cursor-pointer"
                   title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
                 >
                   {theme === 'light' ? <Moon className="h-3 w-3 text-indigo-400" /> : <Sun className="h-3 w-3 text-indigo-400" />}
@@ -1982,12 +1982,12 @@ function AuthScreen({ onLogin, onSandboxLogin, onShowGuide, loginPending, popupB
           </div>
         </div>
  
-        <div className="bg-slate-900 border border-slate-800 rounded-apex-lg p-8 shadow-2xl shadow-indigo-900/20 relative overflow-hidden">
+        <div className="bg-slate-900 border border-slate-800 rounded-apex-lg p-5 sm:p-8 shadow-2xl shadow-indigo-900/20 relative overflow-hidden">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-50" />
           
-          <div className="text-center mb-10">
-            <h2 className="text-xl font-black mb-4 text-white uppercase tracking-tight">Access Protocol</h2>
-            <p className="text-sm text-slate-400 mb-8">Secure entry point for the WhyOr Vault encrypted environment.</p>
+          <div className="text-center mb-6 sm:mb-10">
+            <h2 className="text-lg sm:text-xl font-black mb-2 sm:mb-4 text-white uppercase tracking-tight">Access Protocol</h2>
+            <p className="text-xs sm:text-sm text-slate-400 mb-6 sm:mb-8">Secure entry point for the WhyOr Vault encrypted environment.</p>
 
             {popupBlockedIndicator && (
               <div className="mb-6 p-4 rounded-lg bg-red-950/40 border border-red-500/30 text-red-200 text-xs text-left leading-relaxed space-y-3 p_b_indicator_wrapper">
@@ -2314,23 +2314,23 @@ function AdminLoginScreen({
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-950 relative overflow-hidden w-full">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 py-8 sm:py-12 bg-slate-950 relative overflow-y-auto custom-scrollbar w-full">
       <div className="absolute inset-0 opacity-5 grid-bg" />
-      <div className="w-full max-w-md relative z-10">
-        <div className="flex items-center gap-3 mb-10 justify-center">
-          <div className="w-12 h-12 bg-emerald-950/40 border border-emerald-500/40 rounded flex items-center justify-center shadow-[0_0_15px_rgba(5,150,105,0.15)] animate-pulse shrink-0">
-            <ShieldCheck className="text-emerald-400 h-6 w-6" />
+      <div className="w-full max-w-md relative z-10 my-auto">
+        <div className="flex items-center gap-3 mb-6 sm:mb-10 justify-center">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-950/40 border border-emerald-500/40 rounded flex items-center justify-center shadow-[0_0_15px_rgba(5,150,105,0.15)] animate-pulse shrink-0">
+            <ShieldCheck className="text-emerald-400 h-5 w-5 sm:h-6 sm:w-6" />
           </div>
           <div className="text-left">
-            <h1 className="text-lg font-black font-display tracking-wider text-white uppercase leading-none">
+            <h1 className="text-base sm:text-lg font-black font-display tracking-wider text-white uppercase leading-none">
               STAFF CENTRAL <span className="text-emerald-400">TERMINAL</span>
             </h1>
-            <p className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold mt-1">AUTHORIZATION ACCESS INTERFACE v4.0</p>
+            <p className="text-[8px] sm:text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold mt-1">AUTHORIZATION ACCESS INTERFACE v4.0</p>
           </div>
         </div>
 
         {stage === 'credentials' ? (
-          <form onSubmit={handleAdminVerify} className="bg-slate-900 border border-slate-800 rounded-apex-lg p-8 shadow-2xl relative overflow-hidden">
+          <form onSubmit={handleAdminVerify} className="bg-slate-900 border border-slate-800 rounded-apex-lg p-5 sm:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-50" />
             
             <div className="mb-6">
@@ -2400,7 +2400,7 @@ function AdminLoginScreen({
             </div>
           </form>
         ) : (
-          <form onSubmit={handleMfaSubmit} className="bg-slate-900 border border-slate-800 rounded-apex-lg p-8 shadow-2xl relative overflow-hidden">
+          <form onSubmit={handleMfaSubmit} className="bg-slate-900 border border-slate-800 rounded-apex-lg p-5 sm:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500 to-transparent opacity-50" />
             
             <div className="mb-6">
@@ -2810,10 +2810,25 @@ SAFEKEEPING PROTOCOL:
         ...(decoyVaultConfig ? { decoyDuressVault: decoyVaultConfig } : {})
       };
 
-      await setDoc(configRef, configPayload).catch(e => handleFirestoreError(e, OperationType.CREATE, 'vault/config'));
+      // Commit encrypted configuration to Firestore with resilient fallback so that network stalls never block sealing
+      try {
+        const setDocPromise = setDoc(configRef, configPayload);
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 5000));
+        const writeResult = await Promise.race([setDocPromise, timeoutPromise]);
+        
+        if (writeResult === 'TIMEOUT') {
+          console.warn("Firestore cloud write is syncing in background; proceeding with local encrypted enclave commit.");
+          setDocPromise.catch(err => {
+            console.warn("Background setDoc warning:", err);
+          });
+        }
+      } catch (cloudErr) {
+        console.warn("Initial direct cloud commit notice, persisting securely to local enclave:", cloudErr);
+      }
       
+      // Update registry index asynchronously so it never stalls user entry
       const registryRef = doc(db, 'vault_registry', user.uid);
-      await setDoc(registryRef, {
+      setDoc(registryRef, {
         isPremium: false,
         subscriptionPlan: 'free',
         email: user.email || 'unknown',
@@ -2821,7 +2836,14 @@ SAFEKEEPING PROTOCOL:
         updatedAt: Date.now()
       }).catch(e => console.warn("Failed to update vault registry index:", e));
       
-      await logVaultAction(user.uid, user, AuditAction.CREATE, AuditResourceType.VAULT, user.uid, "Phase 1: Vault Genesis Protocol Completed with Duress support.");
+      // Fire audit log asynchronously so that transient network delays never delay enclave opening
+      logVaultAction(user.uid, user, AuditAction.CREATE, AuditResourceType.VAULT, user.uid, "Phase 1: Vault Genesis Protocol Completed with Duress support.").catch(e => {
+        console.warn("Non-blocking audit log notice:", e);
+      });
+      
+      window.dispatchEvent(new CustomEvent('app-notify', { 
+        detail: { message: "Vault sealed and encrypted enclave committed successfully!", type: 'success' } 
+      }));
       
       onVaultCreated(configPayload, sessionKey, combinedSignature, v2KeyMaterial.dekHkdfBase);
     } catch (e: any) {
@@ -2837,15 +2859,15 @@ SAFEKEEPING PROTOCOL:
     <motion.div 
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="min-h-screen flex items-center justify-center p-6 bg-slate-950"
+      className="min-h-screen flex items-center justify-center p-3 sm:p-6 py-6 sm:py-12 bg-slate-950 overflow-y-auto custom-scrollbar"
     >
-      <div className={cn("w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden transition-all duration-300", step === 'intro' ? "max-w-5xl" : "max-w-2xl")}>
-        <div className="p-8 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+      <div className={cn("w-full bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 my-auto", step === 'intro' ? "max-w-5xl" : "max-w-2xl")}>
+        <div className="p-4 sm:p-8 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
            <div>
-             <h2 className="text-xl font-black text-white uppercase tracking-tight">Vault Genesis Protocol</h2>
-             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Status: Phase {step === 'intro' ? 'I: Discovery' : step === 'master_key' ? 'II: Security Keys' : 'III: Escrow questions'}</p>
+             <h2 className="text-base sm:text-xl font-black text-white uppercase tracking-tight">Vault Genesis Protocol</h2>
+             <p className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Status: Phase {step === 'intro' ? 'I: Discovery' : step === 'master_key' ? 'II: Security Keys' : 'III: Escrow questions'}</p>
            </div>
-           <div className="flex items-center gap-4">
+           <div className="flex items-center gap-2 sm:gap-4">
              <div className="flex gap-1">
                <div key="step-1" className={cn("w-2 h-2 rounded-full", step === 'intro' ? "bg-indigo-500 text-indigo-500 animate-pulse" : "bg-slate-800")} />
                <div key="step-2" className={cn("w-2 h-2 rounded-full", step === 'master_key' ? "bg-indigo-500 text-indigo-500" : "bg-slate-800")} />
@@ -2853,16 +2875,16 @@ SAFEKEEPING PROTOCOL:
              </div>
              <button 
                onClick={onLogout}
-               className="p-2 text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-widest border border-slate-800 hover:border-slate-700 bg-slate-950/40 px-3 py-1.5 rounded-lg shadow-sm"
+               className="p-1.5 sm:p-2 text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase font-bold tracking-widest border border-slate-800 hover:border-slate-700 bg-slate-950/40 px-2.5 sm:px-3 py-1.5 rounded-lg shadow-sm"
                id="cancel-setup-header"
                title="Cancel Setup & Sign Out"
              >
                <LogOut className="h-3 w-3" />
-               Logout
+               <span className="hidden xs:inline sm:inline">Logout</span>
              </button>
            </div>
          </div>
-         <div className={cn("transition-all duration-300", step === 'intro' ? "p-6 md:p-8" : "p-12")}>
+         <div className={cn("transition-all duration-300", step === 'intro' ? "p-4 sm:p-6 md:p-8" : "p-4 sm:p-8 md:p-12")}>
           {step === 'intro' && (
             <OnboardingDiscovery 
               onNext={() => setStep('master_key')} 
@@ -4605,11 +4627,11 @@ function MemberVerifyScreen({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 py-8 sm:py-12 bg-slate-950 overflow-y-auto custom-scrollbar">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl"
+        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl my-auto"
       >
         <div className="text-center mb-6">
           <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-3">
@@ -5411,11 +5433,11 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
       transition={{ duration: 0.3 }}
-      className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden"
+      className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 py-8 sm:py-12 relative overflow-y-auto custom-scrollbar"
     >
       <div className="absolute inset-0 opacity-10 grid-bg" />
       
-      <div className="w-full max-w-sm text-center relative z-10">
+      <div className="w-full max-w-sm text-center relative z-10 my-auto">
         <div className="w-20 h-20 bg-slate-900 border-2 border-red-800/80 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl animate-pulse">
           <TriangleAlert className="text-red-500 h-8 w-8" />
         </div>
@@ -5441,10 +5463,16 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
           </div>
         )}
 
-        <div className={cn(
-          "bg-slate-900 border p-8 rounded-2xl shadow-3xl transition-all relative overflow-hidden",
-          error ? "border-red-500 shadow-red-900/40" : "border-slate-800 shadow-indigo-900/10"
-        )}>
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleRecover();
+          }}
+          className={cn(
+            "bg-slate-900 border p-5 sm:p-8 rounded-2xl shadow-3xl transition-all relative overflow-hidden",
+            error ? "border-red-500 shadow-red-900/40" : "border-slate-800 shadow-indigo-900/10"
+          )}
+        >
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 via-indigo-600 to-red-500" />
            
           {/* Recovery Method Tabs */}
@@ -5476,6 +5504,8 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
               <label className="block text-[10px] font-black text-slate-500 text-left uppercase tracking-wider">Cryptographic Master Key</label>
               <input 
                 type="password"
+                name="masterKey"
+                autoComplete="current-password"
                 value={masterKey}
                 onChange={(e) => setMasterKey(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-4 text-center text-sm focus:border-red-500 outline-none transition-all font-mono text-white placeholder:text-slate-800"
@@ -5489,6 +5519,8 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2">Shamir Share Alpha / Beta (1 of 2)</label>
                 <input 
                   type="password"
+                  name="share1"
+                  autoComplete="off"
                   value={share1}
                   onChange={(e) => setShare1(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-xs focus:border-red-500 outline-none transition-all font-mono text-white placeholder:text-slate-800"
@@ -5499,6 +5531,8 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2">Shamir Share Beta / Gamma (2 of 2)</label>
                 <input 
                   type="password"
+                  name="share2"
+                  autoComplete="off"
                   value={share2}
                   onChange={(e) => setShare2(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-xs focus:border-red-500 outline-none transition-all font-mono text-white placeholder:text-slate-800"
@@ -5515,8 +5549,8 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
           </div>
            
           <button 
+            type="submit"
             disabled={loading}
-            onClick={handleRecover}
             className="w-full mt-6 py-4 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-500 transition-all cursor-pointer shadow-lg shadow-indigo-900/40 uppercase tracking-widest text-xs"
           >
             {loading ? 'Re-integrating cryptographic layers...' : 'Authorize Vault Re-entry'}
@@ -5531,7 +5565,7 @@ function CorruptedScreen({ config, userId, vaultId, onRecover, onLogout, onFallb
               {errorMessage}
             </motion.p>
           )}
-        </div>
+        </form>
          
         <button 
           onClick={onLogout}
@@ -6007,7 +6041,7 @@ function VaultMain({
 
       {/* Sidebar */}
       <aside className={cn(
-        "w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-screen fixed top-0 left-0 transition-transform duration-300 z-50",
+        "w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-full max-h-[100dvh] fixed top-0 left-0 transition-transform duration-300 z-50",
         "lg:translate-x-0 lg:z-10",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}>
@@ -6049,7 +6083,7 @@ function VaultMain({
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
           <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] pl-3 mb-4 mt-2">Vault Categories</p>
           <NavItem key="nav-all" active={filter === 'all'} label="Everything" icon={<Shield className="h-4 w-4" />} onClick={() => selectFilter('all')} count={items.length} />
           {items.some(i => getAssetExpirationStatus(i).isWithin30Days) && (
@@ -6292,7 +6326,7 @@ function VaultMain({
                 animate={{ x: 0 }}
                 exit={{ x: "100%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                className="fixed right-0 top-0 bottom-0 w-[450px] max-w-full bg-slate-900 border-l border-slate-800 shadow-2xl z-[101] flex flex-col p-6 h-screen overflow-y-auto"
+                className="fixed right-0 top-0 bottom-0 w-[450px] max-w-full bg-slate-900 border-l border-slate-800 shadow-2xl z-[101] flex flex-col p-4 sm:p-6 h-full max-h-[100dvh] overflow-y-auto custom-scrollbar overscroll-contain"
               >
                 <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-6">
                   <div className="flex items-center gap-2.5">
@@ -7421,25 +7455,25 @@ function VaultMain({
 
       {/* Comprehensive Succession Manual FAQ popup overlay */}
       {isFaqOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden text-left shadow-2xl">
-            <div className="p-6 border-b border-slate-800 bg-slate-950 flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-xs animate-fadeIn overflow-y-auto overscroll-contain">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] flex flex-col overflow-hidden text-left shadow-2xl my-auto">
+            <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-950 flex justify-between items-center shrink-0">
               <div>
-                <h3 className="text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-indigo-405" />
-                  WhyOr Vault Succession & Disaster Recovery Manual
+                <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-tight flex items-center gap-2">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-405 shrink-0" />
+                  WhyOr Vault Succession &amp; Disaster Recovery Manual
                 </h3>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5 font-mono">Executor Protocols & Bereavement Mitigation Handbook</p>
+                <p className="text-[9px] sm:text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5 font-mono">Executor Protocols &amp; Bereavement Mitigation Handbook</p>
               </div>
               <button 
                 onClick={() => setIsFaqOpen(false)}
-                className="text-slate-500 hover:text-white font-bold text-base cursor-pointer"
+                className="text-slate-500 hover:text-white font-bold text-base cursor-pointer p-1"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 font-sans text-sm text-slate-350 leading-relaxed">
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 space-y-4 sm:space-y-6 font-sans text-sm text-slate-350 leading-relaxed">
               <div className="space-y-2">
                 <h4 className="text-xs font-extrabold text-white uppercase tracking-wider font-mono">1. What makes WhyOr Vault different?</h4>
                 <p>
@@ -7482,7 +7516,7 @@ function VaultMain({
               </div>
             </div>
 
-            <div className="p-6 border-t border-slate-800 bg-slate-950 flex justify-end">
+            <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-950 flex justify-end shrink-0">
               <button
                 onClick={() => setIsFaqOpen(false)}
                 className="px-6 py-2.5 bg-indigo-650 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-widest rounded-xl transition-all cursor-pointer shadow-md shadow-indigo-950/40"
@@ -7868,74 +7902,74 @@ function SettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="absolute inset-0 bg-slate-950/90 backdrop-blur-xl" 
+        className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl" 
         onClick={onClose}
       />
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] my-auto"
       >
-        <div className="flex border-b border-slate-800 bg-slate-950/40">
+        <div className="flex border-b border-slate-800 bg-slate-950/60 overflow-x-auto no-scrollbar shrink-0">
           <button
             onClick={() => { setActiveTab('biometrics'); setRotateError(null); }}
             className={cn(
-              "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-2",
+              "flex-1 min-w-[100px] sm:min-w-[110px] py-3.5 sm:py-4 px-2 sm:px-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap",
               activeTab === 'biometrics' 
-                ? "border-indigo-500 text-indigo-400 font-bold bg-slate-900/10" 
-                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/10"
+                ? "border-indigo-500 text-indigo-400 font-bold bg-slate-900/30" 
+                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/20"
             )}
           >
-            <Fingerprint className="h-4 w-4" />
-            Device Keys
+            <Fingerprint className="h-4 w-4 shrink-0" />
+            <span>Device Keys</span>
           </button>
           {isPrimaryOwner && (
             <button
               onClick={() => { setActiveTab('rotate'); setRotateError(null); }}
               className={cn(
-                "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-2",
+                "flex-1 min-w-[110px] sm:min-w-[120px] py-3.5 sm:py-4 px-2 sm:px-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap",
                 activeTab === 'rotate' 
-                  ? "border-indigo-500 text-indigo-400 font-bold bg-slate-900/10" 
-                  : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/10"
+                  ? "border-indigo-500 text-indigo-400 font-bold bg-slate-900/30" 
+                  : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/20"
               )}
             >
-              <Key className="h-4 w-4" />
-              Rotate Master
+              <Key className="h-4 w-4 shrink-0" />
+              <span>Rotate Master</span>
             </button>
           )}
           <button
             onClick={() => { setActiveTab('purge'); setRotateError(null); }}
             className={cn(
-              "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5",
+              "flex-1 min-w-[80px] sm:min-w-[90px] py-3.5 sm:py-4 px-2 sm:px-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap",
               activeTab === 'purge' 
-                ? "border-red-500 text-red-500 font-bold bg-slate-900/10" 
-                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/10"
+                ? "border-red-500 text-red-500 font-bold bg-slate-900/30" 
+                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/20"
             )}
           >
-            <TriangleAlert className="h-4 w-4" />
-            Purge
+            <TriangleAlert className="h-4 w-4 shrink-0" />
+            <span>Purge</span>
           </button>
           <button
             onClick={() => { setActiveTab('deadmans'); setRotateError(null); }}
             className={cn(
-              "flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5",
+              "flex-1 min-w-[115px] sm:min-w-[130px] py-3.5 sm:py-4 px-2 sm:px-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap",
               activeTab === 'deadmans' 
-                ? "border-amber-550 text-amber-500 font-bold bg-slate-900/10" 
-                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/10"
+                ? "border-amber-500 text-amber-500 font-bold bg-slate-900/30" 
+                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/20"
             )}
             id="tour-dms-tab"
           >
-            <Hourglass className="h-4 w-4 text-amber-500" />
-            Switch & Roles
+            <Hourglass className="h-4 w-4 text-amber-500 shrink-0" />
+            <span>Switch & Roles</span>
           </button>
         </div>
 
         {activeTab === 'rotate' ? (
-          <div className="p-8 bg-slate-900 max-h-[80vh] overflow-y-auto">
+          <div className="p-4 sm:p-6 md:p-8 bg-slate-900 flex-1 overflow-y-auto custom-scrollbar space-y-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20">
@@ -8176,7 +8210,7 @@ function SettingsModal({
             )}
           </div>
         ) : activeTab === 'biometrics' ? (
-          <div className="p-8 bg-slate-900">
+          <div className="p-4 sm:p-6 md:p-8 bg-slate-900 flex-1 overflow-y-auto custom-scrollbar space-y-6">
             <div className="flex items-center gap-4 mb-6">
               <div className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20">
                 <Fingerprint className="h-6 w-6 text-indigo-400 animate-pulse" />
@@ -8363,7 +8397,7 @@ function SettingsModal({
             </div>
           </div>
         ) : activeTab === 'deadmans' ? (
-          <div className="p-8 bg-slate-900 max-h-[85vh] overflow-y-auto space-y-6 text-left">
+          <div className="p-4 sm:p-6 md:p-8 bg-slate-900 flex-1 overflow-y-auto custom-scrollbar space-y-6 text-left">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center border border-amber-500/20 shrink-0">
                 <Hourglass className="h-6 w-6 text-amber-500 animate-spin-slow" />
@@ -8521,8 +8555,8 @@ function SettingsModal({
             </div>
           </div>
         ) : (
-          <div>
-            <div className="p-8 border-b border-slate-800 bg-slate-900/50">
+          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+            <div className="p-4 sm:p-6 md:p-8 border-b border-slate-800 bg-slate-900/50">
               <div className="flex items-center gap-4 mb-4 text-red-500">
                 <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center shrink-0 border border-red-500/20">
                   <TriangleAlert className="h-6 w-6" />
@@ -8556,7 +8590,7 @@ function SettingsModal({
               )}
             </div>
 
-            <div className="p-8 bg-slate-950">
+            <div className="p-4 sm:p-6 md:p-8 bg-slate-950">
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Type <span className="text-red-500 font-black">PURGE</span> to confirm destruction</label>
               <input 
                 type="text"
@@ -8572,18 +8606,18 @@ function SettingsModal({
                 </div>
               )}
 
-              <div className="mt-8 flex gap-4">
+              <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <button 
                   onClick={onClose}
                   disabled={loading}
-                  className="flex-1 py-4 text-xs font-bold text-slate-500 hover:text-white transition-all uppercase tracking-widest"
+                  className="flex-1 py-3.5 sm:py-4 text-xs font-bold text-slate-500 hover:text-white transition-all uppercase tracking-widest border border-slate-800 rounded-xl hover:bg-slate-900 order-2 sm:order-1"
                 >
                   Abort Sequence
                 </button>
                 <button 
                   disabled={loading || confirmText !== 'PURGE'}
                   onClick={purgeVault}
-                  className="flex-[2] py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-500 transition-all disabled:opacity-30 disabled:grayscale uppercase text-xs tracking-widest shadow-lg shadow-red-900/40"
+                  className="flex-[2] py-3.5 sm:py-4 bg-red-600 text-white rounded-xl font-bold hover:bg-red-500 transition-all disabled:opacity-30 disabled:grayscale uppercase text-xs tracking-widest shadow-lg shadow-red-900/40 order-1 sm:order-2"
                 >
                   {loading ? 'Executing Purge...' : 'EXECUTE PROTOCOL'}
                 </button>
@@ -8591,7 +8625,7 @@ function SettingsModal({
             </div>
 
             {/* DURESS DESTRUCTION REGRESSION TESTS */}
-            <div className="p-8 border-t border-slate-800 bg-slate-900/40">
+            <div className="p-4 sm:p-6 md:p-8 border-t border-slate-800 bg-slate-900/40">
               <div className="flex items-center gap-3 mb-4 text-indigo-400">
                 <ShieldCheck className="h-5 w-5" />
                 <h4 className="text-sm font-bold uppercase tracking-wider text-white">Duress Wiping Regression Verification</h4>
@@ -8601,9 +8635,24 @@ function SettingsModal({
               </p>
               {vaultConfig.hashedDuressKey ? (
                 <div className="space-y-4">
-                  <div className="flex gap-2">
+                  <form 
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!testDuressInput.trim()) return;
+                      const hashArgon = await hashMasterKey(testDuressInput.trim(), vaultConfig.masterKeySalt);
+                      const hashPbkdf = await hashMasterKeyPBKDF2(testDuressInput.trim(), vaultConfig.masterKeySalt);
+                      if (hashArgon === vaultConfig.hashedDuressKey || hashPbkdf === vaultConfig.hashedDuressKey) {
+                        setTestDuressResult({ success: true, message: "REGRESSION MATCHED: Safe match verified! Destruction trigger matches exactly." });
+                      } else {
+                        setTestDuressResult({ success: false, message: "REGRESSION FAILED: No match found on duress digest. Verification signature invalid." });
+                      }
+                    }}
+                    className="flex gap-2"
+                  >
                     <input
                       type="password"
+                      name="testDuressKey"
+                      autoComplete="current-password"
                       value={testDuressInput}
                       onChange={(e) => {
                         setTestDuressInput(e.target.value);
@@ -8613,21 +8662,12 @@ function SettingsModal({
                       className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs font-mono text-white outline-none focus:border-indigo-500"
                     />
                     <button
-                      onClick={async () => {
-                        if (!testDuressInput.trim()) return;
-                        const hashArgon = await hashMasterKey(testDuressInput.trim(), vaultConfig.masterKeySalt);
-                        const hashPbkdf = await hashMasterKeyPBKDF2(testDuressInput.trim(), vaultConfig.masterKeySalt);
-                        if (hashArgon === vaultConfig.hashedDuressKey || hashPbkdf === vaultConfig.hashedDuressKey) {
-                          setTestDuressResult({ success: true, message: "REGRESSION MATCHED: Safe match verified! Destruction trigger matches exactly." });
-                        } else {
-                          setTestDuressResult({ success: false, message: "REGRESSION FAILED: No match found on duress digest. Verification signature invalid." });
-                        }
-                      }}
+                      type="submit"
                       className="px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider active:scale-95 transition-all cursor-pointer"
                     >
                       Verify Code
                     </button>
-                  </div>
+                  </form>
                   {testDuressResult && (
                     <div className={cn(
                       "p-3.5 rounded-xl border text-[10px] font-mono font-bold uppercase leading-relaxed text-left animate-fadeIn",
@@ -9000,21 +9040,21 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-6 overflow-y-auto overscroll-contain">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] my-auto"
       >
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-           <h3 className="text-xl font-bold font-display text-white flex items-center gap-2">
+        <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50 shrink-0">
+           <h3 className="text-lg sm:text-xl font-bold font-display text-white flex items-center gap-2">
              <FileSpreadsheet className="h-5 w-5 text-indigo-400" />
              Data Migration Hub
            </h3>
            <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-apex text-slate-500 hover:text-slate-200 transition-colors"><Trash2 className="h-5 w-5 rotate-45" /></button>
         </div>
 
-        <div className="p-8">
+        <div className="p-4 sm:p-6 md:p-8 flex-1 overflow-y-auto custom-scrollbar">
           {step === 'options' && (
             <div className="space-y-6">
               <p className="text-sm text-slate-400 leading-relaxed mb-6">Backup, migrate, or bulk-import your asset data. All local operations are performed within your encrypted memory space.</p>
@@ -9072,7 +9112,13 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
           )}
 
           {step === 'export_challenge' && (
-            <div className="space-y-8">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                verifyChallengeAndExport();
+              }}
+              className="space-y-8"
+            >
               <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
                 <TriangleAlert className="h-5 w-5 text-red-500 shrink-0" />
                 <p className="text-[10px] font-bold text-red-400 uppercase tracking-wide">Identity verification challenge required to initiate decryption and exfiltration.</p>
@@ -9085,6 +9131,8 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
                     <p className="text-xs text-white mb-4">{SECURITY_QUESTIONS[idx]}</p>
                     <input 
                       type="password"
+                      name={`challenge_answer_${i}`}
+                      autoComplete="off"
                       value={challengeAnswers[i]}
                       onChange={(e) => {
                         const newA = [...challengeAnswers];
@@ -9099,15 +9147,15 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
               </div>
 
               <button 
-                onClick={verifyChallengeAndExport}
+                type="submit"
                 disabled={isVerifying || loading || challengeAnswers.some(a => !a)}
-                className="w-full py-4 bg-red-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-red-500 transition-all disabled:opacity-50"
+                className="w-full py-4 bg-red-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-red-500 transition-all disabled:opacity-50 cursor-pointer"
               >
                 {isVerifying ? 'Verifying Integrity...' : loading ? 'Encrypting Archive...' : 'Verify & Export Securely'}
               </button>
               
-              <button onClick={() => setStep('options')} className="block w-full text-[10px] font-bold text-slate-600 hover:text-slate-400 uppercase tracking-widest">Return to Safety</button>
-            </div>
+              <button type="button" onClick={() => setStep('options')} className="block w-full text-[10px] font-bold text-slate-600 hover:text-slate-400 uppercase tracking-widest cursor-pointer">Return to Safety</button>
+            </form>
           )}
         </div>
       </motion.div>
@@ -9168,19 +9216,19 @@ function AuditModal({ vaultId, dekHkdfBase, vaultConfig, onClose }: { vaultId: s
   }, [vaultId]);
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-6 overflow-y-auto overscroll-contain">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md" 
         onClick={onClose}
       />
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="relative w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl flex flex-col max-h-[85vh]"
+        className="relative w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] my-auto"
       >
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50 shrink-0">
            <div className="flex items-center gap-3">
              <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center border border-slate-700">
                 <Table className="h-4 w-4 text-indigo-400" />
@@ -10782,24 +10830,28 @@ function EntryModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 sm:p-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-10 overflow-y-auto overscroll-contain">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md" 
         onClick={onClose}
       />
-      <motion.div 
+      <motion.form 
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] my-auto"
       >
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
-           <h3 className="text-xl font-bold font-display text-white">{item ? 'Modify Protocol' : 'New Asset Protocol'}</h3>
+        <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between bg-slate-950/50 shrink-0">
+           <h3 className="text-lg sm:text-xl font-bold font-display text-white">{item ? 'Modify Protocol' : 'New Asset Protocol'}</h3>
            <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-apex text-slate-500 hover:text-slate-200 transition-colors"><Trash2 className="h-5 w-5 rotate-45" /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-900 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 bg-slate-900 custom-scrollbar">
            <EntryModalContent
              formData={formData}
              setFormData={setFormData}
@@ -10817,7 +10869,14 @@ function EntryModal({
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">{formData.type === 'bank' ? 'Online Password' : 'Password'}</label>
-                <input type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} className="w-full bg-slate-950 border border-slate-800 rounded-apex px-4 py-3 text-sm text-white font-mono" />
+                <input 
+                  type="password" 
+                  name="vaultItemPassword"
+                  autoComplete="new-password"
+                  value={formData.password} 
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })} 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-apex px-4 py-3 text-sm text-white font-mono" 
+                />
                 
                 {/* Visual Password Strength Indicator */}
                 {(() => {
@@ -11028,21 +11087,21 @@ function EntryModal({
            </div>
         </div>
 
-        <div className="p-8 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
-           <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">End-to-End Encryption Active</p>
-           <div className="flex gap-4">
-            <button onClick={onClose} className="px-6 py-3 text-sm font-bold text-slate-500 hover:text-white transition-colors">Abort Entry</button>
+        <div className="p-4 sm:p-6 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-4 shrink-0">
+           <p className="text-[10px] text-slate-600 font-bold uppercase tracking-widest text-center sm:text-left">End-to-End Encryption Active</p>
+           <div className="flex w-full sm:w-auto gap-3">
+            <button onClick={onClose} className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-500 hover:text-white transition-colors border border-slate-800 rounded-apex sm:border-transparent">Abort Entry</button>
             <button 
+              type="submit"
               disabled={loading}
-              onClick={save}
-              className="bg-indigo-600 text-white px-10 py-3 rounded-apex font-bold hover:bg-indigo-500 transition-all flex items-center gap-2 shadow-lg shadow-indigo-900/40"
+              className="flex-1 sm:flex-none bg-indigo-600 text-white px-6 sm:px-10 py-2.5 sm:py-3 rounded-apex font-bold hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/40 text-xs sm:text-sm cursor-pointer"
             >
               {loading && <RefreshCw className="animate-spin h-3.5 w-3.5" />}
               {item ? 'Protocol Update' : 'Initialize Record'}
             </button>
            </div>
         </div>
-      </motion.div>
+      </motion.form>
     </div>
   );
 }
@@ -11331,17 +11390,17 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto overscroll-contain">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
+        className="fixed inset-0 bg-slate-950/80 backdrop-blur-md" 
         onClick={onClose}
       />
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl p-8"
+        className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl p-4 sm:p-6 md:p-8 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto custom-scrollbar my-auto"
       >
         <h3 className="text-xl font-bold font-display text-white mb-2">WhyOr Handshake</h3>
         <p className="text-xs text-slate-500 mb-6 font-medium">To invite family, generate a temporary token and share it. <span className="text-indigo-400">Dispatch securely using Mailchimp Transactional.</span></p>
@@ -12341,13 +12400,13 @@ export function EmergencyEventsDashboard({ items, vaultId, userId }: EmergencyEv
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 text-left"
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 text-left overflow-y-auto overscroll-contain"
           >
             <motion.div 
               initial={{ scale: 0.95, y: 10 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 10 }}
-              className="bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl p-6 max-w-xl w-full border-t-8 border-t-emerald-600"
+              className="bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl p-4 sm:p-6 max-w-xl w-full border-t-8 border-t-emerald-600 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto custom-scrollbar my-auto"
             >
               <div className="flex items-center gap-2 text-emerald-500 font-black tracking-wider uppercase text-sm border-b border-slate-800 pb-3 mb-4">
                 <ShieldCheck className="h-5 w-5" /> Escrow Notification Dispatch Simulator

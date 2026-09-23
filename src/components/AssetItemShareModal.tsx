@@ -134,7 +134,7 @@ export const AssetItemShareModal: React.FC<AssetItemShareModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto overscroll-contain">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -150,19 +150,19 @@ export const AssetItemShareModal: React.FC<AssetItemShareModalProps> = ({
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 15 }}
           transition={{ duration: 0.2 }}
-          className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden z-10 text-slate-200"
+          className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 overflow-hidden z-10 text-slate-200 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] flex flex-col my-auto"
         >
           {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4 sm:mb-5 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-950/70 border border-indigo-500/30 text-indigo-400">
-                <Share2 className="w-5 h-5" />
+              <div className="p-2 sm:p-2.5 rounded-xl bg-indigo-950/70 border border-indigo-500/30 text-indigo-400">
+                <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-white">
+                <h3 className="text-sm sm:text-base font-extrabold text-white">
                   {targetItems.length === 1 ? `Share ${targetItems[0].name}` : `Share ${targetItems.length} Selected Assets`}
                 </h3>
-                <p className="text-xs text-slate-400 font-mono">
+                <p className="text-[11px] sm:text-xs text-slate-400 font-mono">
                   Controlled cryptographic sharing with designated heirs or legal counsel
                 </p>
               </div>
@@ -177,7 +177,7 @@ export const AssetItemShareModal: React.FC<AssetItemShareModalProps> = ({
           </div>
 
           {!shareSuccess ? (
-            <form onSubmit={handleExecuteShare} className="space-y-4">
+            <form onSubmit={handleExecuteShare} className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-1">
               {/* Asset Badge Overview */}
               <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-2 overflow-hidden">
@@ -340,7 +340,7 @@ export const AssetItemShareModal: React.FC<AssetItemShareModalProps> = ({
             </form>
           ) : (
             /* Success State with Copyable Link */
-            <div className="space-y-4 py-3 text-center">
+            <div className="space-y-4 py-3 text-center flex-1 overflow-y-auto custom-scrollbar">
               <div className="w-12 h-12 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto">
                 <Check className="w-6 h-6" />
               </div>
