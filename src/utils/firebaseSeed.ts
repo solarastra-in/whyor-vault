@@ -1,5 +1,5 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getDoc, setDoc } from 'firebase/firestore';
+import { db, doc } from '../lib/firebase';
 
 /**
  * Initializes essential documents and persistent collections in Cloud Firestore

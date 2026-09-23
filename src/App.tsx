@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { auth, db } from './lib/firebase';
+import { auth, db, doc, collection } from './lib/firebase';
 import { 
   GoogleAuthProvider, 
   signInWithPopup as fbSignInWithPopup, 
@@ -9,11 +9,9 @@ import {
   deleteUser
 } from 'firebase/auth';
 import { 
-  doc, 
   getDoc as fbGetDoc, 
   getDocFromServer as fbGetDocFromServer, 
   setDoc as fbSetDoc, 
-  collection, 
   getDocs as fbGetDocs, 
   query, 
   where, 
@@ -1177,18 +1175,6 @@ export default function App() {
         setUser(u);
         seedInitialFirebaseData(u.email);
         
-        if (u.email === 'solarastra.in@gmail.com') {
-          setScreen(prev => {
-            // If they are already in the admin flow, let it be.
-            if (prev === 'admin_dashboard' || prev === 'admin_login') {
-              return prev;
-            }
-            return 'admin_dashboard';
-          });
-          setLoading(false);
-          return;
-        }
-
         try {
           // Check terms acceptance
           const userRef = doc(db, 'users', u.uid);
@@ -1525,6 +1511,17 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {user && (
+              <button
+                onClick={() => {
+                  findVault(user);
+                }}
+                className="flex items-center gap-2 text-xs font-bold font-mono uppercase bg-indigo-600 hover:bg-indigo-500 text-white py-2 px-4 rounded-apex transition-all shadow-md shadow-indigo-900/40 cursor-pointer"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Go to My Vault
+              </button>
+            )}
             <button
               onClick={toggleTheme}
               className="flex items-center justify-center p-2.5 rounded-apex bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-750 cursor-pointer"
@@ -1577,6 +1574,7 @@ export default function App() {
             user={user} 
             onComplete={() => findVault(user)} 
             onLogout={logout}
+            onGoToAdmin={user.email === 'solarastra.in@gmail.com' ? () => setScreen('admin_dashboard') : undefined}
             onVaultCreated={async (config, key, signature, dekHkdfBase) => {
               try {
                 localStorage.setItem(await localConfigCacheKey(user.uid), JSON.stringify(config));
@@ -2495,7 +2493,7 @@ function AdminLoginScreen({
   );
 }
 
-function SetupScreen({ user, onComplete, onLogout, onVaultCreated }: { user: User, onComplete: () => void, onLogout: () => void, onVaultCreated: (config: VaultConfig, key: CryptoKey, signature: string, dekHkdfBase?: CryptoKey) => void, key?: string }) {
+function SetupScreen({ user, onComplete, onLogout, onVaultCreated, onGoToAdmin }: { user: User, onComplete: () => void, onLogout: () => void, onVaultCreated: (config: VaultConfig, key: CryptoKey, signature: string, dekHkdfBase?: CryptoKey) => void, key?: string, onGoToAdmin?: () => void }) {
   // Claim 3/17/18: configurable (k, n) Shamir threshold
   const [shamirK, setShamirK] = useState<number>(DEFAULT_SHAMIR_K);
   const [shamirN, setShamirN] = useState<number>(DEFAULT_SHAMIR_N);
@@ -2723,38 +2721,9 @@ SAFEKEEPING PROTOCOL:
       const signatureHash = await serverHmacSignature(combinedSignature, globalSalt, CURRENT_PEPPER_VERSION);
 
       // Phase 1 Protocol:
-      // Claim 1/11/12/14: dual-route KDF cascade + WebAuthn PRF
-      let prfEnrollment: { credentialId: string; prfOutput: ArrayBuffer; prfSalt: ArrayBuffer } | undefined;
-      // Claim 14's fallback (Final KEK = Base KEK) exists precisely so a
-      // missing/unavailable/hung hardware authenticator never blocks vault
-      // creation. Two defenses against that in a preview/embedded context:
-      // 1) skip the attempt entirely inside an iframe, where
-      //    navigator.credentials.create() is frequently disallowed by the
-      //    embedding page's Permissions-Policy and can hang rather than
-      //    reject cleanly depending on the browser; 2) race it against a
-      //    hard timeout regardless, so a platform authenticator that never
-      //    answers (no real Touch ID/Face ID hardware, a sandboxed/headless
-      //    browser reporting one is available when none actually is, etc.)
-      //    can't leave "Seal Vault" spinning forever.
-      const isEmbeddedIframe = typeof window !== 'undefined' && window.self !== window.top;
-      if (!isEmbeddedIframe) {
-        try {
-          const prfAttempt = getWebAuthnPRFOutputForNewCredential(user.email || 'user@whyor.io');
-          // Promise.race doesn't cancel the loser -- if the timeout wins,
-          // prfAttempt keeps running in the background (it may still
-          // resolve, harmlessly unused, or reject; swallow either so it
-          // can never surface as an unhandled rejection later).
-          prfAttempt.catch(() => {});
-          const prfTimeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3500));
-          prfEnrollment = await Promise.race([prfAttempt, prfTimeout]);
-        } catch (e) {
-          console.warn('WebAuthn PRF enrollment skipped at vault creation:', e);
-        }
-      }
-
+      // Claim 1/11/12/14: dual-route KDF cascade (Hardware PRF binding is performed intentionally in Settings)
       const v2KeyMaterial = await createNewVaultKeyMaterial(
-        combinedSignature,
-        prfEnrollment?.prfOutput
+        combinedSignature
       );
       const sessionKey = v2KeyMaterial.dek;
 
@@ -2798,11 +2767,7 @@ SAFEKEEPING PROTOCOL:
         argonPbkdfSaltB64: v2KeyMaterial.argonPbkdfSaltB64,
         wrappedDEK: v2KeyMaterial.wrappedDEK,
         wrappedDEKIv: v2KeyMaterial.wrappedDEKIv,
-        usedPRFAtCreation: v2KeyMaterial.usedPRF,
-        ...(prfEnrollment ? {
-          webauthnPrfCredentialId: prfEnrollment.credentialId,
-          webauthnPrfSaltB64: btoa(String.fromCharCode(...new Uint8Array(prfEnrollment.prfSalt))),
-        } : {}),
+        usedPRFAtCreation: false,
         // Claim 3/17 fields
         shamirVersion: SHAMIR_VERSION_CURRENT,
         shamirK,
@@ -2810,10 +2775,17 @@ SAFEKEEPING PROTOCOL:
         ...(decoyVaultConfig ? { decoyDuressVault: decoyVaultConfig } : {})
       };
 
+      // Persist to local enclave storage FIRST so that client is immediately self-sufficient offline
+      try {
+        localStorage.setItem(await localConfigCacheKey(user.uid), JSON.stringify(configPayload));
+      } catch (storageErr) {
+        console.warn("Local storage cache write notice:", storageErr);
+      }
+
       // Commit encrypted configuration to Firestore with resilient fallback so that network stalls never block sealing
       try {
         const setDocPromise = setDoc(configRef, configPayload);
-        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 5000));
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), 4000));
         const writeResult = await Promise.race([setDocPromise, timeoutPromise]);
         
         if (writeResult === 'TIMEOUT') {
@@ -2873,6 +2845,16 @@ SAFEKEEPING PROTOCOL:
                <div key="step-2" className={cn("w-2 h-2 rounded-full", step === 'master_key' ? "bg-indigo-500 text-indigo-500" : "bg-slate-800")} />
                <div key="step-3" className={cn("w-2 h-2 rounded-full", step === 'questions' ? "bg-indigo-500" : "bg-slate-800")} />
              </div>
+             {onGoToAdmin && (
+               <button 
+                 onClick={onGoToAdmin}
+                 className="p-1.5 sm:p-2 text-indigo-400 hover:text-white transition-colors flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase font-bold tracking-widest border border-indigo-800/60 hover:border-indigo-600 bg-indigo-950/40 px-2.5 sm:px-3 py-1.5 rounded-lg shadow-sm cursor-pointer"
+                 title="Open Admin Console"
+               >
+                 <Sliders className="h-3 w-3" />
+                 <span className="hidden xs:inline sm:inline">Admin</span>
+               </button>
+             )}
              <button 
                onClick={onLogout}
                className="p-1.5 sm:p-2 text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-[9px] sm:text-[10px] uppercase font-bold tracking-widest border border-slate-800 hover:border-slate-700 bg-slate-950/40 px-2.5 sm:px-3 py-1.5 rounded-lg shadow-sm"
@@ -8944,6 +8926,7 @@ function ExcelModal({ items, vaultId, encryptionKey, vaultConfig, onClose }: {
           name: itemData.name,
           institution: itemData.institution,
           encryptedData,
+          ownerId: auth.currentUser?.uid || vaultId,
           updatedAt: Date.now()
         });
       }

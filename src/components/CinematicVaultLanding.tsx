@@ -4,9 +4,10 @@ import {
   Shield, ShieldCheck, Lock, Unlock, Key, Fingerprint, Cpu, 
   Volume2, VolumeX, AlertCircle, TriangleAlert, LogIn, 
   Sun, Moon, HelpCircle, Sparkles, CheckCircle2, ChevronRight,
-  RotateCcw, Sliders, ExternalLink, Copy
+  RotateCcw, Sliders, ExternalLink, Copy, Database
 } from 'lucide-react';
 import { cn, safeCopyToClipboard, getCleanPreviewUrl } from '../lib/utils';
+import FirestoreTestModal from './FirestoreTestModal';
 
 const notify = (message: string, type: 'info' | 'error' | 'success' = 'info') => {
   if (typeof window !== 'undefined') {
@@ -226,6 +227,7 @@ export default function CinematicVaultLanding({
   const [isMuted, setIsMuted] = useState(false);
   const [dialHoverAngle, setDialHoverAngle] = useState(0);
   const [telemetry, setTelemetry] = useState<string>("[SYS] Blast doors sealed • Level 5 Cryptographic Enclave active");
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
 
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
   const isSandboxMode = getIsSandbox();
@@ -390,6 +392,16 @@ export default function CinematicVaultLanding({
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsTestModalOpen(true)}
+            className="flex items-center gap-1.5 text-xs text-indigo-300 hover:text-white bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-700/60 py-1.5 px-3 rounded-lg font-bold font-mono uppercase tracking-wider transition-all cursor-pointer shadow-md backdrop-blur-md"
+            title="Run Firestore Live Submission & Diagnostics Test Suite"
+          >
+            <Database className="h-3.5 w-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Test Database</span>
+          </button>
+
           <button
             type="button"
             onClick={onShowGuide}
@@ -932,6 +944,11 @@ export default function CinematicVaultLanding({
           WhyOr Vault © {new Date().getFullYear()} • Encrypted Client-Side Digital Estate Vault
         </p>
       </footer>
+
+      <FirestoreTestModal 
+        isOpen={isTestModalOpen} 
+        onClose={() => setIsTestModalOpen(false)} 
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { db, collection, doc } from '../lib/firebase';
 import { 
-  collection, doc, getDoc, getDocs, writeBatch, setDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
+  getDoc, getDocs, writeBatch, setDoc, updateDoc, onSnapshot, query, orderBy, limit, deleteDoc
 } from 'firebase/firestore';
 import { 
   Sliders, Users, Shield, Copy, Check, Search, Save, Calendar, Landmark, 

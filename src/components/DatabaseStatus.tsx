@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { doc, getDocFromServer } from 'firebase/firestore';
-import { Database, Wifi, WifiOff, RefreshCw, CheckCircle2, XCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { db, doc } from '../lib/firebase';
+import { getDocFromServer } from 'firebase/firestore';
+import { Database, Wifi, WifiOff, RefreshCw, CheckCircle2, XCircle, AlertTriangle, ExternalLink, Play } from 'lucide-react';
 import { safeCopyToClipboard, getCleanPreviewUrl } from '../lib/utils';
+import FirestoreTestModal from './FirestoreTestModal';
 
 interface DatabaseStatusProps {
   variant?: 'compact' | 'detailed';
@@ -13,6 +14,7 @@ export default function DatabaseStatus({ variant = 'detailed' }: DatabaseStatusP
   const [latency, setLatency] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [isTestModalOpen, setIsTestModalOpen] = useState(false);
 
   const checkConnectivity = async () => {
     if (status === 'checking') return;
@@ -21,7 +23,7 @@ export default function DatabaseStatus({ variant = 'detailed' }: DatabaseStatusP
     setLatency(null);
 
     const maxRetries = 4;
-    const testRef = doc(db, 'system', 'connectivity');
+    const testRef = doc(db, 'system', 'config');
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       const startTime = Date.now();
@@ -209,7 +211,7 @@ export default function DatabaseStatus({ variant = 'detailed' }: DatabaseStatusP
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/40">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/40">
           <button
             type="button"
             onClick={checkConnectivity}
@@ -220,6 +222,17 @@ export default function DatabaseStatus({ variant = 'detailed' }: DatabaseStatusP
             {status === 'checking' ? 'Testing Link...' : 'Test Connection'}
           </button>
 
+          <button
+            type="button"
+            onClick={() => setIsTestModalOpen(true)}
+            className="py-2.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-xs font-bold font-mono uppercase tracking-wider text-indigo-300 hover:text-white rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+          >
+            <Play className="h-3 w-3 fill-current text-indigo-400" />
+            Run Submission Test Suite
+          </button>
+        </div>
+
+        <div className="mt-2 pt-2 border-t border-slate-800/40">
           <div className="relative">
             <button
               type="button"
@@ -228,18 +241,20 @@ export default function DatabaseStatus({ variant = 'detailed' }: DatabaseStatusP
                 window.open(cleanUrl, '_blank');
                 safeCopyToClipboard(cleanUrl).catch(() => {});
               }}
-              className="w-full py-2.5 px-3 bg-indigo-600/10 hover:bg-indigo-600/15 border border-indigo-500/20 hover:border-indigo-500/30 text-xs font-bold font-mono uppercase tracking-wider text-indigo-400 hover:text-indigo-300 rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+              className="w-full py-2 px-3 bg-slate-900/60 hover:bg-slate-900 border border-slate-800/80 text-[11px] font-bold font-mono uppercase tracking-wider text-slate-400 hover:text-slate-200 rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all cursor-pointer"
               title="Open direct URL in new tab and copy to clipboard"
             >
-              <ExternalLink className="h-3 w-3 text-indigo-400" />
-              Escape Sandbox
+              <ExternalLink className="h-3 w-3 text-slate-400" />
+              Escape Sandbox / Open Standalone
             </button>
-            <p className="text-[8px] text-slate-500 text-center mt-1 leading-normal font-mono px-1">
-              Note: If Google redirects you to 'available-regions', paste the auto-copied URL in an incognito window with your primary developer profile!
-            </p>
           </div>
         </div>
       </div>
+
+      <FirestoreTestModal 
+        isOpen={isTestModalOpen} 
+        onClose={() => setIsTestModalOpen(false)} 
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { db } from '../lib/firebase';
-import { collection, doc, updateDoc, setDoc, addDoc } from 'firebase/firestore';
+import { db, collection, doc } from '../lib/firebase';
+import { updateDoc, setDoc, addDoc } from 'firebase/firestore';
 import { 
   X, Shield, CreditCard, CheckCircle, RefreshCw, Star, 
   Sparkles, Calendar, HelpCircle, Heart, Lock, HelpCircle as HelpIcon, Landmark

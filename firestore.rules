@@ -59,7 +59,7 @@ service cloud.firestore {
     }
 
     // System Settings Configuration
-    match /system/config {
+    match /system/{document} {
       allow read: if true;
       allow create: if (isSignedIn() && resource == null) || isAdmin();
       allow update, delete: if isAdmin();
@@ -115,7 +115,7 @@ service cloud.firestore {
       allow update: if (isOwner(vaultId) || isAdmin()) ||
         (canAccessVaultConfig() && 
          incoming().ownerId == existing().ownerId &&
-         incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails', 'auditMerkleRoot']));
+         incoming().diff(existing()).affectedKeys().hasOnly(['failedAttempts', 'isCorrupted', 'members', 'owners', 'ownerEmails', 'auditMerkleRoot', 'masterKeyFailedAttempts']));
 
       allow delete: if isOwner(vaultId) || isAdmin();
     }
@@ -135,12 +135,14 @@ service cloud.firestore {
 
       allow list, get: if canAccessVault() || isAdmin();
       allow create: if canAccessVault() && 
-        incoming().ownerId == request.auth.uid &&
-        incoming().encryptedData is string &&
-        incoming().encryptedData.size() <= 1048576; 
+        (incoming().ownerId == request.auth.uid || incoming().ownerId == vaultId || isOwner(vaultId)) && 
+        (
+          (incoming().encryptedData is string && incoming().encryptedData.size() <= 1048576) ||
+          (incoming().type == 'life_event')
+        ); 
       allow update: if canAccessVault() && 
         incoming().ownerId == existing().ownerId &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['encryptedData', 'type', 'name', 'updatedAt']);
+        incoming().diff(existing()).affectedKeys().hasOnly(['encryptedData', 'type', 'name', 'updatedAt', 'partition', 'institution', 'ownerId', 'status', 'conditions', 'proofFileName', 'trusteeEmails', 'attorneyEmails', 'initiatorEmail', 'initiatorName']);
       allow delete: if canAccessVault() || isAdmin();
     }
 

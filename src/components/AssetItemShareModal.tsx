@@ -7,8 +7,8 @@ import {
 import { DecryptedItem, VaultConfig } from '../types';
 import AssetBadge from './AssetBadge';
 import { cn } from '../lib/utils';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { updateDoc } from 'firebase/firestore';
+import { db, doc } from '../lib/firebase';
 import { encrypt } from '../lib/crypto';
 
 interface AssetItemShareModalProps {
