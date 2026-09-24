@@ -93,6 +93,78 @@ async function runCliTest() {
     results.push({ test: 'Safe Doc/Collection Fallback', status: 'FAIL', durationMs: 0, details: err?.message || String(err) });
   }
 
+  // TEST 5: Auth State Persistence & Retry Enclave Layer Test
+  console.log('\n[TEST 5] Testing Auth State Persistence Layer & Latency Resilience...');
+  const t5 = Date.now();
+  try {
+    const { 
+      saveAuthSessionHint, 
+      getAuthSessionHint, 
+      clearAuthSessionHint, 
+      hasActiveSessionHint, 
+      delay, 
+      executeWithRetry 
+    } = await import('../src/lib/authPersistence');
+
+    let storageMap = new Map<string, string>();
+    (global as any).window = { location: {} };
+    (global as any).localStorage = {
+      getItem: (k: string) => storageMap.get(k) || null,
+      setItem: (k: string, v: string) => storageMap.set(k, v),
+      removeItem: (k: string) => storageMap.delete(k),
+      clear: () => storageMap.clear(),
+    };
+
+    saveAuthSessionHint({
+      uid: 'test-user-latency-uid-123',
+      email: 'solarastra.in@gmail.com',
+      displayName: 'Test User'
+    });
+
+    const isHintActive = hasActiveSessionHint();
+    const hint = getAuthSessionHint();
+    if (!isHintActive || !hint || hint.uid !== 'test-user-latency-uid-123') {
+      throw new Error('Auth session hint failed to persist or read correctly.');
+    }
+
+    let attemptsCount = 0;
+    const retryResult = await executeWithRetry(async () => {
+      attemptsCount++;
+      if (attemptsCount < 2) {
+        throw new Error('Simulated transient latency / cold-start transport negotiation error');
+      }
+      return 'enclave-connected-successfully';
+    }, {
+      maxRetries: 2,
+      delayMs: 50,
+      backoffFactor: 1.2
+    });
+
+    if (retryResult !== 'enclave-connected-successfully' || attemptsCount !== 2) {
+      throw new Error(`executeWithRetry failed to negotiate transient latency (attempts: ${attemptsCount})`);
+    }
+
+    const delayStart = Date.now();
+    await delay(60);
+    const delayElapsed = Date.now() - delayStart;
+    if (delayElapsed < 45) {
+      throw new Error(`delay utility resolved prematurely: ${delayElapsed}ms`);
+    }
+
+    clearAuthSessionHint();
+    if (hasActiveSessionHint()) {
+      throw new Error('Session hint was not cleared after explicit logout.');
+    }
+
+    const dur = Date.now() - t5;
+    console.log(`[TEST 5 RESULT] SUCCESS (${dur}ms): Auth persistence layer and retry backoff fully validated!`);
+    results.push({ test: 'Auth Persistence & Retry Layer', status: 'PASS', durationMs: dur, details: 'Session hints, retry backoff & latency delays operational.' });
+  } catch (err: any) {
+    const dur = Date.now() - t5;
+    console.error(`[TEST 5 RESULT] FAILED (${dur}ms):`, err?.message || err);
+    results.push({ test: 'Auth Persistence & Retry Layer', status: 'FAIL', durationMs: dur, details: err?.message || String(err) });
+  }
+
   await terminate(db);
 
   console.log('\n========================================================');

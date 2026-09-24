@@ -1,5 +1,12 @@
 import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { 
+  getAuth, 
+  Auth, 
+  browserLocalPersistence, 
+  indexedDBLocalPersistence, 
+  browserSessionPersistence, 
+  setPersistence 
+} from 'firebase/auth';
 import { 
   getFirestore, 
   Firestore,
@@ -13,6 +20,14 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 export const app: FirebaseApp = initializeApp(firebaseConfig);
 export const auth: Auth = getAuth(app);
+
+// Explicitly configure browser auth persistence layer with fallback support
+if (typeof window !== 'undefined') {
+  setPersistence(auth, indexedDBLocalPersistence)
+    .catch(() => setPersistence(auth, browserLocalPersistence))
+    .catch(() => setPersistence(auth, browserSessionPersistence))
+    .catch((err) => console.warn('[Firebase Auth] Persistence initialization notice:', err));
+}
 
 // Suppress benign transport-level connection stream warning traces
 setLogLevel('error');

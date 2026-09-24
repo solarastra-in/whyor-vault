@@ -14,13 +14,14 @@ import {
   getAdminMfaTemplate,
   getPaymentReceiptTemplate
 } from "./server/emailTemplates";
+import { handleGeminiChat } from "./server/geminiChat";
 
 // Load environment variables (e.g., FINGERPRINT_PEPPER)
 dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Verify security settings and initialize high-entropy persistent pepper for production
   let pepper = process.env.FINGERPRINT_PEPPER;
@@ -109,6 +110,7 @@ async function startServer() {
 
   // API Route for sending authenticated/formatted Mailchimp Transactional messages
   app.post("/api/send-email", async (req: express.Request, res: express.Response) => {
+    res.setHeader("Content-Type", "application/json");
     try {
       const { to, type, templateData } = req.body;
 
@@ -148,6 +150,26 @@ async function startServer() {
           html = getPaymentReceiptTemplate(templateData || {});
           subject = "Payment Receipt Registered - WhyOr Cryptographic Vault";
           break;
+        case "smtp_test":
+        case "test_email":
+          html = `
+            <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color:#020617; color:#f8fafc; padding:32px 24px; border-radius:12px; max-width:540px; margin:0 auto; border:1px solid #1e293b;">
+              <div style="border-bottom:1px solid #1e293b; padding-bottom:16px; margin-bottom:20px;">
+                <span style="background:rgba(99,102,241,0.15); color:#818cf8; font-size:11px; font-weight:700; padding:4px 8px; border-radius:4px; text-transform:uppercase; letter-spacing:0.1em; border:1px solid rgba(99,102,241,0.3);">WhyOr Vault Security</span>
+                <h2 style="color:#ffffff; font-size:20px; font-weight:700; margin:12px 0 4px 0;">SMTP Verification Succeeded</h2>
+                <p style="color:#94a3b8; font-size:13px; margin:0;">Direct transport connection established successfully.</p>
+              </div>
+              <div style="background-color:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:16px; margin-bottom:20px;">
+                <p style="font-size:12px; color:#64748b; margin:0 0 6px 0; text-transform:uppercase; font-weight:600; letter-spacing:0.05em;">Dispatch Details</p>
+                <p style="font-size:13px; color:#cbd5e1; margin:4px 0;"><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+                <p style="font-size:13px; color:#cbd5e1; margin:4px 0;"><strong>Active Transport:</strong> ${process.env.SMTP_HOST ? `SMTP Relay (${process.env.SMTP_HOST}:${process.env.SMTP_PORT || '587'})` : 'Transactional Gateway'}</p>
+                <p style="font-size:13px; color:#cbd5e1; margin:4px 0;"><strong>Recipient:</strong> ${to}</p>
+              </div>
+              <p style="font-size:12px; color:#64748b; margin:0; line-height:1.5;">This message confirms your SMTP credentials are active. All cryptographic vault handshakes, access revocations, and recovery notifications will route via this mailer.</p>
+            </div>
+          `;
+          subject = "WhyOr Vault: SMTP Gateway Verification Successful";
+          break;
         default:
           return res.status(400).json({ error: `Invalid template type: '${type}'` });
       }
@@ -161,21 +183,63 @@ async function startServer() {
       });
 
       if (!mailResult.success) {
-        return res.status(502).json({ 
-          error: "Mailchimp transactional transmission failed", 
+        return res.status(200).json({ 
+          success: false, 
+          unconfigured: true,
+          error: mailResult.error || "Email transmission failed", 
           details: mailResult.error 
         });
       }
 
-      return res.json({ success: true, message: "Email transmitted successfully", details: mailResult.data });
+      return res.json({ 
+        success: true, 
+        simulated: (mailResult as any).simulated || false,
+        provider: mailResult.provider || "mailchimp",
+        message: (mailResult as any).simulated 
+          ? "Email gateway is unconfigured or in simulation mode." 
+          : `Email transmitted successfully via ${mailResult.provider === 'smtp' ? 'SMTP Gateway' : 'Mailchimp Transactional'}`, 
+        details: mailResult.data 
+      });
     } catch (err: any) {
       console.error("Internal API server mailer exception:", err);
-      return res.status(500).json({ error: "Internal mailer dispatch failure.", details: err?.message });
+      return res.status(500).json({ error: "Internal mailer dispatch failure.", details: err?.message || String(err) });
     }
   });
 
+  // API Route to inspect email & SMTP configuration state
+  app.get("/api/email-status", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    const hasSmtp = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+    const hasMailchimp = Boolean(
+      process.env.MAILCHIMP_API_KEY && 
+      process.env.MAILCHIMP_API_KEY !== "a6d12a214167ac734ee42dbfbca655ca-us14"
+    );
+
+    res.json({
+      configured: hasSmtp || hasMailchimp,
+      activeProvider: hasSmtp ? "smtp" : hasMailchimp ? "mailchimp" : "none",
+      smtp: {
+        configured: hasSmtp,
+        host: process.env.SMTP_HOST || null,
+        port: process.env.SMTP_PORT || "587",
+        secure: process.env.SMTP_SECURE === "true" || process.env.SMTP_PORT === "465",
+        userMasked: process.env.SMTP_USER 
+          ? `${process.env.SMTP_USER.slice(0, 3)}***@${process.env.SMTP_USER.split('@')[1] || 'domain'}` 
+          : null,
+        from: process.env.SMTP_FROM || null
+      },
+      mailchimp: {
+        configured: hasMailchimp
+      }
+    });
+  });
+
+  // API Route for multi-turn Gemini Assistant Chatbot
+  app.post("/api/gemini/chat", handleGeminiChat);
+
   // Keep a status page for connectivity checking
   app.get("/api/health", (req, res) => {
+    res.setHeader("Content-Type", "application/json");
     res.json({ status: "healthy", serverTime: new Date().toISOString() });
   });
 
@@ -186,7 +250,9 @@ async function startServer() {
 
   // Set up Vite development server middleware or production static asset server
   const distPath = path.join(process.cwd(), "dist");
-  const useStatic = process.env.NODE_ENV === "production" && fs.existsSync(path.join(distPath, "index.html"));
+  const hasDist = fs.existsSync(path.join(distPath, "index.html"));
+  const isBundled = (typeof __filename !== "undefined" && (__filename.endsWith(".cjs") || __filename.includes("dist"))) || process.env.NODE_ENV === "production";
+  const useStatic = hasDist && isBundled;
 
   if (!useStatic) {
     const vite = await createViteServer({

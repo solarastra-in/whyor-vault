@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { auth, db, doc, collection } from './lib/firebase';
 import { 
+  saveAuthSessionHint, 
+  getAuthSessionHint, 
+  clearAuthSessionHint, 
+  hasActiveSessionHint, 
+  delay, 
+  waitForTokenStabilization, 
+  executeWithRetry 
+} from './lib/authPersistence';
+import { 
   GoogleAuthProvider, 
   signInWithPopup as fbSignInWithPopup, 
   signOut as fbSignOut, 
@@ -377,7 +386,8 @@ import {
   FileSpreadsheet, Download, Upload, ShieldEllipsis, Table, Layers, Terminal, Database, ShieldAlert, X,
   Users, Globe, Home, User as UserIcon, ExternalLink, Truck, Heart, ClipboardList, DollarSign, Settings,
   Lightbulb, Eye, EyeOff, Sliders, Wifi, WifiOff, Activity, Paperclip, AlertOctagon, FileText, FolderOpen, Archive,
-  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu, Hourglass, HeartPulse, Share2, Square, CheckSquare
+  ChevronDown, ChevronUp, ChevronRight, Sun, Moon, Menu, Hourglass, HeartPulse, Share2, Square, CheckSquare,
+  Mail, Send, Server
 } from 'lucide-react';
 import firebaseConfig from '../firebase-applet-config.json';
 import * as XLSX from 'xlsx';
@@ -418,8 +428,11 @@ import { ViewMode, SortField, SortDirection } from './types';
 import { getItemMonetaryValue } from './components/AssetPillars';
 import { seedInitialFirebaseData } from './utils/firebaseSeed';
 import GuidedTour, { TourLauncherButton } from './components/GuidedTour';
+import { GeminiChatbot } from './components/GeminiChatbot';
+import SecuritySimulationsAndDiagnosticsModal from './components/SecuritySimulationsAndDiagnosticsModal';
+import SmtpSettingsPanel from './components/SmtpSettingsPanel';
 import { Tooltip, InfoTooltip, FieldLabel } from './components/Tooltip';
-import { Coins, Wallet, Flame, Sparkles, Clock, Calendar, AlertTriangle, Zap } from 'lucide-react';
+import { Coins, Wallet, Flame, Sparkles, Clock, Calendar, AlertTriangle, Zap, Play } from 'lucide-react';
 import { handleFirestoreError, OperationType } from './lib/error-handler';
 import DatabaseStatus from './components/DatabaseStatus';
 import ErasureProtocolAnimation from './components/ErasureProtocolAnimation';
@@ -851,6 +864,11 @@ export default function App() {
   const [isEnteringVault, setIsEnteringVault] = useState(false);
   const [isGuidedTourOpen, setIsGuidedTourOpen] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(false);
+  const [authStatusText, setAuthStatusText] = useState<string>(() => {
+    return hasActiveSessionHint()
+      ? "Restoring secure enclave cryptographic session..."
+      : "Initializing security protocols...";
+  });
   
   const [systemConfig, setSystemConfig] = useState({
     rateMonthly: 4.99,
@@ -907,6 +925,16 @@ export default function App() {
     sourceContext?: string;
     targetAction?: () => void;
   } | null>(null);
+
+  const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenDiagnostics = () => setIsDiagnosticsModalOpen(true);
+    window.addEventListener('open-diagnostics-modal', handleOpenDiagnostics);
+    return () => {
+      window.removeEventListener('open-diagnostics-modal', handleOpenDiagnostics);
+    };
+  }, []);
 
   const remainingSecsRef = useRef<number | null>(null);
   useEffect(() => {
@@ -1158,55 +1186,125 @@ export default function App() {
       });
     };
 
+    const handleMovieVaultAnimation = () => {
+      setIsMovieVaultOpeningOpen(true);
+    };
+
     window.addEventListener('emergency-purge', handleEmergencyPurge);
     window.addEventListener('test-erasure-dry-run', handleDryRunErasure);
     window.addEventListener('preview-master-key-transition', handlePreviewMasterKeyTransition);
+    window.addEventListener('open-movie-vault-animation', handleMovieVaultAnimation);
     return () => {
       window.removeEventListener('emergency-purge', handleEmergencyPurge);
       window.removeEventListener('test-erasure-dry-run', handleDryRunErasure);
       window.removeEventListener('preview-master-key-transition', handlePreviewMasterKeyTransition);
+      window.removeEventListener('open-movie-vault-animation', handleMovieVaultAnimation);
     };
   }, [user, vaultId]);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
-      setLoading(true);
+    let isCancelled = false;
+    let authGraceTimer: any = null;
+    const initialSessionHint = getAuthSessionHint();
+
+    if (initialSessionHint) {
+      setAuthStatusText("Restoring secure enclave cryptographic session...");
+    } else {
+      setAuthStatusText("Initializing security protocols...");
+    }
+
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (isCancelled) return;
+
       if (u) {
+        if (authGraceTimer) {
+          clearTimeout(authGraceTimer);
+          authGraceTimer = null;
+        }
+
+        setLoading(true);
+        saveAuthSessionHint(u);
         setUser(u);
+        setAuthStatusText("Synchronizing cryptographic credentials...");
+
+        // Ensure auth token is minted and available to Firestore
+        await waitForTokenStabilization(u);
+
+        // Intentional loading state delay to gracefully absorb network latency
+        // before attempting to access vault configurations
+        await delay(400);
+
+        if (isCancelled) return;
+        setAuthStatusText("Establishing zero-knowledge enclave connection...");
         seedInitialFirebaseData(u.email);
-        
+
         try {
-          // Check terms acceptance
+          // Check terms acceptance with retry resilience
           const userRef = doc(db, 'users', u.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists() && userSnap.data().hasAcceptedTerms) {
+          const userSnap = await executeWithRetry(() => getDoc(userRef), {
+            maxRetries: 2,
+            delayMs: 300,
+            onRetry: (attempt) => {
+              if (!isCancelled) {
+                setAuthStatusText(`Synchronizing credentials (negotiation attempt ${attempt + 1})...`);
+              }
+            }
+          });
+
+          if (isCancelled) return;
+
+          if (userSnap && userSnap.exists() && userSnap.data().hasAcceptedTerms) {
             setHasAcceptedTerms(true);
+            setAuthStatusText("Accessing zero-knowledge vault configuration...");
             await findVault(u);
           } else {
             setHasAcceptedTerms(false);
-            // If they haven't accepted terms, they need to see the modal
-            // We'll keep them on 'auth' screen but the modal will overlay
+            setLoading(false);
           }
         } catch (error) {
           console.warn("Firestore connection check failed (possibly offline). Initiating offline fallback:", error);
-          // Set terms acceptance to true in-memory to allow offline decryption attempt
+          if (isCancelled) return;
           setHasAcceptedTerms(true);
           try {
             await findVault(u);
           } catch (innerErr) {
             console.error("Offline vault discovery failed:", innerErr);
             setScreen('setup');
+          } finally {
+            setLoading(false);
           }
         }
       } else {
-        setUser(null);
-        setScreen('auth');
-        setVaultConfig(null);
-        setVaultId(null);
-        setHasAcceptedTerms(null);
+        // If a session hint exists, Firebase Auth might still be restoring from IndexedDB.
+        // Grant a short latency tolerance window before clearing session state.
+        if (initialSessionHint && !authGraceTimer) {
+          setAuthStatusText("Verifying session credentials...");
+          authGraceTimer = setTimeout(() => {
+            if (isCancelled) return;
+            clearAuthSessionHint();
+            setUser(null);
+            setScreen('auth');
+            setVaultConfig(null);
+            setVaultId(null);
+            setHasAcceptedTerms(null);
+            setLoading(false);
+          }, 650);
+        } else if (!initialSessionHint) {
+          setUser(null);
+          setScreen('auth');
+          setVaultConfig(null);
+          setVaultId(null);
+          setHasAcceptedTerms(null);
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
+
+    return () => {
+      isCancelled = true;
+      if (authGraceTimer) clearTimeout(authGraceTimer);
+      unsub();
+    };
   }, []);
 
   // Real-time synchronization of VaultConfig and immediate session termination on corruption (Gate 2)
@@ -1247,12 +1345,19 @@ export default function App() {
 
   const findVault = async (u: User) => {
     setGlobalLoading(true);
+    setAuthStatusText("Retrieving encrypted vault configuration...");
     try {
-      // First check if user is an owner
+      // First check if user is an owner with retry resilience against initialization latency
       const ownerRef = doc(db, 'vaults', u.uid, 'vault', 'config');
       let ownerSnap = null;
       try {
-        ownerSnap = await getDoc(ownerRef);
+        ownerSnap = await executeWithRetry(() => getDoc(ownerRef), {
+          maxRetries: 2,
+          delayMs: 350,
+          onRetry: (attempt) => {
+            setAuthStatusText(`Connecting to vault partition (negotiation ${attempt + 1})...`);
+          }
+        });
       } catch (dbErr) {
         console.warn("Failed to reach server for owner vault check. Checking offline cache:", dbErr);
       }
@@ -1268,15 +1373,20 @@ export default function App() {
         setVaultId(u.uid);
         if (data.isCorrupted) setScreen('corrupted');
         else setScreen('verify');
+        setLoading(false);
         setGlobalLoading(false);
         return;
       }
 
       // If not owner, check if they are a shared member
+      setAuthStatusText("Checking shared partition memberships...");
       const userRef = doc(db, 'users', u.uid);
       let userSnap = null;
       try {
-        userSnap = await getDoc(userRef);
+        userSnap = await executeWithRetry(() => getDoc(userRef), {
+          maxRetries: 1,
+          delayMs: 300
+        });
       } catch (dbErr) {
         console.warn("Failed to reach server for user profile check. Checking offline cache:", dbErr);
       }
@@ -1286,7 +1396,10 @@ export default function App() {
         const sharedRef = doc(db, 'vaults', vId, 'vault', 'config');
         let sharedSnap = null;
         try {
-          sharedSnap = await getDoc(sharedRef);
+          sharedSnap = await executeWithRetry(() => getDoc(sharedRef), {
+            maxRetries: 1,
+            delayMs: 300
+          });
         } catch (dbErr) {
           console.warn("Failed to reach server for shared vault check. Checking offline cache:", dbErr);
         }
@@ -1304,6 +1417,8 @@ export default function App() {
             // Claim 6: shared members unlock via MemberVerifyScreen
             if (data.isCorrupted) setScreen('corrupted');
             else setScreen('member_verify');
+            setLoading(false);
+            setGlobalLoading(false);
             return;
           }
         }
@@ -1319,6 +1434,7 @@ export default function App() {
           setVaultId(data.ownerId || u.uid);
           if (data.isCorrupted) setScreen('corrupted');
           else setScreen('verify');
+          setLoading(false);
           setGlobalLoading(false);
           return;
         } catch (parseErr) {
@@ -1327,11 +1443,14 @@ export default function App() {
       }
 
       setScreen('setup');
+      setLoading(false);
     } catch (e) {
       console.error("Vault discovery error:", e);
       setScreen('setup');
+      setLoading(false);
     } finally {
       setGlobalLoading(false);
+      setLoading(false);
     }
   };
 
@@ -1345,6 +1464,7 @@ export default function App() {
       displayName: "Sandbox Representative",
       providerData: [{ providerId: 'google.com', email: "solarastra.in@gmail.com" }]
     };
+    saveAuthSessionHint(mockUser);
     activeAuthListeners.forEach(listener => {
       try { listener(mockUser); } catch(e) { console.error(e); }
     });
@@ -1358,7 +1478,10 @@ export default function App() {
 
     const provider = new GoogleAuthProvider();
     fbSignInWithPopup(auth, provider)
-      .then(() => {
+      .then((cred: any) => {
+        if (cred?.user) {
+          saveAuthSessionHint(cred.user);
+        }
         setLoginPending(false);
         setIsEnteringVault(true);
       })
@@ -1387,6 +1510,7 @@ export default function App() {
 
   const logout = async () => {
     try {
+      clearAuthSessionHint();
       await signOut(auth);
     } catch(e) {
       console.warn("Logout signout warning:", e);
@@ -1420,8 +1544,19 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-soft">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-700"></div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+        <div className="relative mb-6">
+          <div className="w-14 h-14 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-6 h-6 rounded-full bg-indigo-500/15 border border-indigo-500/30" />
+          </div>
+        </div>
+        <p className="text-xs font-semibold text-slate-300 tracking-wider uppercase animate-pulse text-center px-4 max-w-md">
+          {authStatusText}
+        </p>
+        <span className="text-[10px] text-slate-500 mt-2 font-mono tracking-widest uppercase">
+          WhyOr Secure Enclave • Zero-Knowledge Architecture
+        </span>
       </div>
     );
   }
@@ -1438,8 +1573,18 @@ export default function App() {
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950"
       >
-        <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-6" />
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] animate-pulse">Initializing Protocol...</p>
+        <div className="relative mb-6">
+          <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-indigo-500/15 border border-indigo-500/30" />
+          </div>
+        </div>
+        <p className="text-xs font-bold text-slate-300 tracking-wider uppercase animate-pulse text-center px-4 max-w-md">
+          {authStatusText}
+        </p>
+        <span className="text-[10px] text-slate-500 mt-2 font-mono tracking-widest uppercase">
+          WhyOr Secure Enclave • Zero-Knowledge Architecture
+        </span>
       </motion.div>
     );
   } else if (((!user && screen === 'auth') || isEnteringVault)) {
@@ -1827,7 +1972,31 @@ export default function App() {
         </div>
       )}
 
-      <SystemTroubleshooter />
+      {/* Centralized Security Simulations & Connection Diagnostics Lab Modal */}
+      <SecuritySimulationsAndDiagnosticsModal
+        isOpen={isDiagnosticsModalOpen}
+        onClose={() => setIsDiagnosticsModalOpen(false)}
+        onLaunchMovieVault={() => setIsMovieVaultOpeningOpen(true)}
+        onLaunchMasterKeyTransition={() => {
+          setMasterKeyTransition({
+            isOpen: true,
+            sourceContext: "Master Key Override Preview",
+            targetAction: () => setMasterKeyTransition(null)
+          });
+        }}
+        onLaunchErasureSimulation={() => {
+          setErasureAnimation({
+            active: true,
+            isDryRun: true,
+            title: "DURESS REGRESSION SIMULATION",
+            subtitle: "Testing Multi-Pass Shredding and Enclave Reset Animation (Zero Data Erased)",
+            onComplete: () => {
+              setErasureAnimation(null);
+              notify("Erasure protocol simulation complete. Vault data remains 100% intact.", 'success');
+            }
+          });
+        }}
+      />
 
       {/* Cinematic Movie Vault Opening Animation Overlay */}
       <MovieVaultOpening 
@@ -1878,57 +2047,35 @@ export default function App() {
         }}
       />
 
-      {/* Floating Guided Tour & Secondary Pathways Cinematic Bar */}
-      <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2 print:hidden flex-wrap max-w-[calc(100vw-2rem)]">
+      {/* Multi-turn Gemini Next-Step Navigator & Security Concierge */}
+      <GeminiChatbot
+        appContext={{
+          screen,
+          isConfigured: !!vaultConfig,
+          isLocked,
+          itemCount: decryptedEntries.length,
+          partitionCount: vaultConfig?.partitions?.length || 1,
+          userEmail: user?.email || undefined
+        }}
+        theme={theme}
+      />
+
+      {/* Floating Guided Tour Launcher */}
+      <div className="fixed bottom-4 left-4 z-40 print:hidden">
         <TourLauncherButton onClick={() => setIsGuidedTourOpen(true)} label="Guided Tour" />
-        <button
-          type="button"
-          onClick={() => setIsMovieVaultOpeningOpen(true)}
-          className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 hover:border-indigo-400 text-indigo-300 hover:text-white px-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-black/40 backdrop-blur-md transition-all cursor-pointer"
-          title="Play Cinematic Movie Vault Opening Animation"
-        >
-          <Lock className="h-3.5 w-3.5 text-indigo-400 animate-pulse" />
-          <span className="hidden sm:inline">Movie Vault</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMasterKeyTransition({
-              isOpen: true,
-              sourceContext: "Master Key Override Preview",
-              targetAction: () => setMasterKeyTransition(null)
-            });
-          }}
-          className="bg-slate-900/80 hover:bg-slate-800 border border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white px-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-black/40 backdrop-blur-md transition-all cursor-pointer"
-          title="Play Master Key Secondary Override Animation"
-        >
-          <Key className="h-3.5 w-3.5 text-amber-400" />
-          <span className="hidden md:inline">Master Key</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setErasureAnimation({
-              active: true,
-              isDryRun: true,
-              title: "DURESS REGRESSION SIMULATION",
-              subtitle: "Testing Multi-Pass Shredding and Enclave Reset Animation (Zero Data Erased)",
-              onComplete: () => {
-                setErasureAnimation(null);
-                notify("Erasure protocol simulation complete. Vault data remains 100% intact.", 'success');
-              }
-            });
-          }}
-          className="bg-red-950/70 hover:bg-red-900 border border-red-500/40 hover:border-red-400 text-red-300 hover:text-white px-3 py-2 rounded-full text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-black/40 backdrop-blur-md transition-all cursor-pointer"
-          title="Preview Emergency Erasure Protocol Animation (Simulation)"
-        >
-          <Flame className="h-3.5 w-3.5 text-red-400 animate-pulse" />
-          <span className="hidden md:inline">Erasure Protocol</span>
-        </button>
       </div>
 
-      <footer className="fixed bottom-4 right-4 text-xs text-ink-muted pointer-events-none z-50">
-        WhyOr Vault © {new Date().getFullYear()} WhyOr Vault
+      <footer className="fixed bottom-3 right-24 text-xs text-slate-500 pointer-events-auto z-40 hidden sm:flex items-center gap-3 bg-slate-950/70 backdrop-blur-md px-3 py-1 rounded-full border border-slate-800/60 shadow-lg">
+        <span className="text-[11px] text-slate-400">WhyOr Vault © {new Date().getFullYear()}</span>
+        <span className="text-slate-600">•</span>
+        <button
+          onClick={() => setIsDiagnosticsModalOpen(true)}
+          className="text-[11px] text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition-colors cursor-pointer"
+          title="Open Diagnostics & Simulation Lab"
+        >
+          <Activity className="h-3 w-3 text-indigo-400" />
+          <span>Diagnostics & Lab</span>
+        </button>
       </footer>
     </div>
   );
@@ -5715,6 +5862,7 @@ function VaultMain({
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'biometrics' | 'purge' | 'rotate' | 'deadmans' | 'simulations' | 'smtp'>('biometrics');
   const [visibleRecoveredAnswers, setVisibleRecoveredAnswers] = useState<Record<number, boolean>>({});
   const [isChallengeAnswersOpen, setIsChallengeAnswersOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -6660,20 +6808,6 @@ function VaultMain({
               </Tooltip>
             )}
 
-            {onReplayVaultAnimation && (
-              <Tooltip content="Play the cinematic, movie-grade mechanical vault opening sequence." title="Vault Opening Sequence">
-                <button
-                  type="button"
-                  onClick={onReplayVaultAnimation}
-                  className="px-3.5 py-3 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 hover:border-indigo-400 text-indigo-300 hover:text-white rounded-lg font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-indigo-950/40 whitespace-nowrap"
-                  title="Play Movie Vault Animation"
-                >
-                  <Lock className="h-4 w-4 text-indigo-400 animate-pulse" />
-                  <span className="text-xs uppercase tracking-wider hidden md:inline">Vault Animation</span>
-                </button>
-              </Tooltip>
-            )}
-
             {onStartGuidedTour && (
               <Tooltip content="Start the step-by-step guided tour explaining every screen, vault partition, and feature." title="Guided Tour">
                 <div>
@@ -7343,6 +7477,11 @@ function VaultMain({
           userId={userId} 
           dekHkdfBase={dekHkdfBase}
           onClose={() => setIsShareModalOpen(false)} 
+          onOpenSettings={(tab) => {
+            setIsShareModalOpen(false);
+            setSettingsInitialTab(tab || 'smtp');
+            setIsSettingsModalOpen(true);
+          }}
         />
       )}
 
@@ -7372,7 +7511,11 @@ function VaultMain({
           vaultConfig={vaultConfig}
           combinedSignature={combinedSignature}
           dekHkdfBase={dekHkdfBase}
-          onClose={() => setIsSettingsModalOpen(false)}
+          initialTab={settingsInitialTab}
+          onClose={() => {
+            setIsSettingsModalOpen(false);
+            setSettingsInitialTab('biometrics');
+          }}
           onReset={onLock}
           idleTimeoutMins={idleTimeoutMins}
           setIdleTimeoutMins={setIdleTimeoutMins}
@@ -7559,7 +7702,12 @@ function SettingsModal({
   onClose, 
   onReset,
   idleTimeoutMins,
-  setIdleTimeoutMins
+  setIdleTimeoutMins,
+  onLaunchMovieVault,
+  onLaunchMasterKeyTransition,
+  onLaunchErasureSimulation,
+  onOpenDiagnosticsModal,
+  initialTab = 'biometrics'
 }: { 
   vaultId: string, 
   userId: string, 
@@ -7569,7 +7717,12 @@ function SettingsModal({
   onClose: () => void, 
   onReset: () => void,
   idleTimeoutMins: number,
-  setIdleTimeoutMins: (val: number) => void
+  setIdleTimeoutMins: (val: number) => void,
+  onLaunchMovieVault?: () => void,
+  onLaunchMasterKeyTransition?: () => void,
+  onLaunchErasureSimulation?: () => void,
+  onOpenDiagnosticsModal?: () => void,
+  initialTab?: 'biometrics' | 'purge' | 'rotate' | 'deadmans' | 'simulations' | 'smtp'
 }) {
   const [_rekeyingHardware, _setRekeyingHardware] = useState(false);
 
@@ -7618,7 +7771,7 @@ function SettingsModal({
   const [loading, setLoading] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'biometrics' | 'purge' | 'rotate' | 'deadmans'>('biometrics');
+  const [activeTab, setActiveTab] = useState<'biometrics' | 'purge' | 'rotate' | 'deadmans' | 'simulations' | 'smtp'>(initialTab);
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [isRegistered, setIsRegistered] = useState<boolean>(false);
   const [quickUnlockWindow, setQuickUnlockWindow] = useState<number>(() => getQuickUnlockWindowMins(vaultId));
@@ -7947,6 +8100,32 @@ function SettingsModal({
           >
             <Hourglass className="h-4 w-4 text-amber-500 shrink-0" />
             <span>Switch & Roles</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('simulations'); setRotateError(null); }}
+            className={cn(
+              "flex-1 min-w-[130px] sm:min-w-[150px] py-3.5 sm:py-4 px-2 sm:px-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap",
+              activeTab === 'simulations' 
+                ? "border-indigo-500 text-indigo-400 font-bold bg-slate-900/30" 
+                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/20"
+            )}
+            id="tour-simulations-tab"
+          >
+            <Activity className="h-4 w-4 text-indigo-400 shrink-0" />
+            <span>Labs & Diagnostics</span>
+          </button>
+          <button
+            onClick={() => { setActiveTab('smtp'); setRotateError(null); }}
+            className={cn(
+              "flex-1 min-w-[110px] sm:min-w-[130px] py-3.5 sm:py-4 px-2 sm:px-3 text-xs font-bold uppercase tracking-wider transition-all border-b-2 text-center flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap",
+              activeTab === 'smtp' 
+                ? "border-emerald-500 text-emerald-400 font-bold bg-slate-900/30" 
+                : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-950/20"
+            )}
+            id="tour-smtp-tab"
+          >
+            <Server className="h-4 w-4 text-emerald-400 shrink-0" />
+            <span>Email & SMTP</span>
           </button>
         </div>
 
@@ -8536,7 +8715,7 @@ function SettingsModal({
               </button>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'purge' ? (
           <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
             <div className="p-4 sm:p-6 md:p-8 border-b border-slate-800 bg-slate-900/50">
               <div className="flex items-center gap-4 mb-4 text-red-500">
@@ -8688,7 +8867,155 @@ function SettingsModal({
               </div>
             </div>
           </div>
-        )}
+        ) : activeTab === 'simulations' ? (
+          <div className="p-4 sm:p-6 md:p-8 bg-slate-900 flex-1 overflow-y-auto custom-scrollbar space-y-6 text-left">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20 shrink-0">
+                <Activity className="h-6 w-6 text-indigo-400 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white uppercase tracking-tight">Security Simulations & Diagnostics Lab</h3>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Isolated Testing & Visual Enclave</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed font-sans">
+              Test your cloud connectivity, Firebase health, and run cryptographic animations safely in an isolated sandbox without cluttering your active vault interface.
+            </p>
+
+            {/* Diagnostics Launch Card */}
+            <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Terminal className="h-4 w-4 text-indigo-400" />
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Cloud Connection Diagnostics</span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">Ready</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Run deep diagnostics testing outbound network routing, Firebase credentials, backend node gateway, real-time Firestore latency, and local persistence cache.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (onOpenDiagnosticsModal) {
+                    onOpenDiagnosticsModal();
+                  } else {
+                    window.dispatchEvent(new CustomEvent('open-diagnostics-modal'));
+                  }
+                }}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <Activity className="h-4 w-4" />
+                <span>Open Full Connection Diagnostics Console</span>
+              </button>
+            </div>
+
+            {/* Cryptographic Simulations List */}
+            <div className="space-y-3">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">Cryptographic Animations & Drills</span>
+
+              {/* 1. Mechanical Vault Opening */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                    <Lock className="w-5 h-5 text-indigo-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Mechanical Vault Opening</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Cinematic 3D bolt tumblers and mechanical gear unlock sequence.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onLaunchMovieVault) {
+                      onLaunchMovieVault();
+                    } else {
+                      window.dispatchEvent(new CustomEvent('open-movie-vault-animation'));
+                    }
+                  }}
+                  className="px-3.5 py-2 bg-indigo-950 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Play</span>
+                </button>
+              </div>
+
+              {/* 2. Master Key Override */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
+                    <Key className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Master Key Override Transition</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Emergency break-glass secondary master key animation.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onLaunchMasterKeyTransition) {
+                      onLaunchMasterKeyTransition();
+                    } else {
+                      window.dispatchEvent(new CustomEvent('preview-master-key-transition'));
+                    }
+                  }}
+                  className="px-3.5 py-2 bg-amber-950/60 hover:bg-amber-900 border border-amber-500/40 text-amber-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Preview</span>
+                </button>
+              </div>
+
+              {/* 3. Erasure Protocol Simulation */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center shrink-0">
+                    <Flame className="w-5 h-5 text-red-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wide">Duress Erasure Protocol Drill</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Multi-pass cryptographic zeroization drill (Safe dry-run, 0 data erased).</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onLaunchErasureSimulation) {
+                      onLaunchErasureSimulation();
+                    } else {
+                      window.dispatchEvent(new CustomEvent('test-erasure-dry-run'));
+                    }
+                  }}
+                  className="px-3.5 py-2 bg-red-950/60 hover:bg-red-900 border border-red-500/40 text-red-300 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Simulate</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <button 
+                onClick={onClose}
+                className="py-2 text-xs font-bold text-slate-500 hover:text-white transition-all uppercase tracking-widest border border-slate-800 px-4 rounded-xl hover:bg-slate-800"
+              >
+                Close Settings
+              </button>
+            </div>
+          </div>
+        ) : activeTab === 'smtp' ? (
+          <SmtpSettingsPanel 
+            currentUserEmail={auth.currentUser?.email} 
+            onClose={onClose} 
+          />
+        ) : null}
       </motion.div>
     </div>
   );
@@ -11089,7 +11416,7 @@ function EntryModal({
   );
 }
 
-function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string, userId: string, dekHkdfBase?: CryptoKey, onClose: () => void }) {
+function ShareModal({ vaultId, userId, dekHkdfBase, onClose, onOpenSettings }: { vaultId: string, userId: string, dekHkdfBase?: CryptoKey, onClose: () => void, onOpenSettings?: (tab?: any) => void }) {
   const [_enrolledMembers, setEnrolledMembers] = useState<any[]>([]);
   const [_memberTokens, setMemberTokens] = useState<Record<string, string[]>>({});
 
@@ -11162,6 +11489,64 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
   const [tokenExpires, setTokenExpires] = useState<number | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [emailSending, setEmailSending] = useState(false);
+  const [emailStatusMessage, setEmailStatusMessage] = useState<string | null>(null);
+
+  const getInviteEmailSubject = () => {
+    return `🔐 Invitation to join WhyOr Vault (Handshake Token: ${handshakeToken || ''})`;
+  };
+
+  const getInviteEmailBody = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vault.whyor.in';
+    const owner = auth.currentUser?.email || 'A family member';
+    const recipient = inviteEmail.trim() || 'family member';
+    return `Hello,\n\nYou have been invited to join the private WhyOr Cryptographic Vault by ${owner}.\n\nAccess Details:\n• Handshake Token: ${handshakeToken}\n• Validity: 30 minutes\n• Access Portal: ${origin}\n\nInstructions:\n1. Open the WhyOr Vault portal at: ${origin}\n2. Sign in with your email (${recipient})\n3. Enter the 6-character Handshake Token (${handshakeToken}) to link your access.\n\nNote: All vault records are zero-knowledge encrypted end-to-end.`;
+  };
+
+  const openGmailCompose = () => {
+    if (!inviteEmail.trim()) {
+      window.dispatchEvent(new CustomEvent('app-notify', { 
+        detail: { message: "Please enter the invitee email address first.", type: 'error' } 
+      }));
+      return;
+    }
+    const subject = encodeURIComponent(getInviteEmailSubject());
+    const body = encodeURIComponent(getInviteEmailBody());
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(inviteEmail.trim())}&su=${subject}&body=${body}`;
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    window.dispatchEvent(new CustomEvent('app-notify', { 
+      detail: { message: `Opening Gmail compose with invitation for ${inviteEmail.trim()}...`, type: 'success' } 
+    }));
+  };
+
+  const openDefaultMailClient = () => {
+    if (!inviteEmail.trim()) {
+      window.dispatchEvent(new CustomEvent('app-notify', { 
+        detail: { message: "Please enter the invitee email address first.", type: 'error' } 
+      }));
+      return;
+    }
+    const subject = encodeURIComponent(getInviteEmailSubject());
+    const body = encodeURIComponent(getInviteEmailBody());
+    window.location.href = `mailto:${encodeURIComponent(inviteEmail.trim())}?subject=${subject}&body=${body}`;
+  };
+
+  const shareInvitation = async () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vault.whyor.in';
+    const text = `Join my secure WhyOr Vault.\n1. Sign in at the WhyOr Portal: ${origin}\n2. Use Handshake Token: ${handshakeToken}\n(Valid for 30 minutes)`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'WhyOr Vault Access Invitation',
+          text: text,
+          url: origin
+        });
+        return;
+      } catch (err) {
+        // Fallback to copy if cancelled or rejected
+      }
+    }
+    copyInvite();
+  };
 
   useEffect(() => {
     const configRef = doc(db, 'vaults', vaultId, 'vault', 'config');
@@ -11221,6 +11606,7 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
       return;
     }
     setEmailSending(true);
+    setEmailStatusMessage(null);
     try {
       const response = await fetch('/api/send-email', {
         method: 'POST',
@@ -11238,18 +11624,40 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
           }
         })
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send secure handshake invite.');
+      
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        data = { error: responseText || 'Empty or invalid response from mail server' };
       }
-      window.dispatchEvent(new CustomEvent('app-notify', { 
-        detail: { message: `Invitation email securely sent to ${inviteEmail} via Mailchimp Transactional!`, type: 'success' } 
-      }));
-      setInviteEmail('');
+
+      if (!response.ok || data.success === false) {
+        const errMsg = data.error || 'Mailchimp Transactional API key is unconfigured or rejected.';
+        setEmailStatusMessage(errMsg);
+        window.dispatchEvent(new CustomEvent('app-notify', { 
+          detail: { message: errMsg, type: 'error' } 
+        }));
+        return;
+      }
+
+      if (data.simulated) {
+        setEmailStatusMessage("Notice: Mailchimp API key is unconfigured in this environment. Use 'Send via Gmail' to dispatch directly from your account.");
+        window.dispatchEvent(new CustomEvent('app-notify', { 
+          detail: { message: "Cloud mailer key unconfigured. Use 'Send via Gmail' for direct delivery!", type: 'error' } 
+        }));
+      } else {
+        window.dispatchEvent(new CustomEvent('app-notify', { 
+          detail: { message: `Invitation email securely sent to ${inviteEmail} via Mailchimp Transactional!`, type: 'success' } 
+        }));
+        setInviteEmail('');
+      }
     } catch (err: any) {
       console.error(err);
+      setEmailStatusMessage("Could not contact server mailer. Please use 'Send via Gmail' or 'Copy Invitation'.");
       window.dispatchEvent(new CustomEvent('app-notify', { 
-        detail: { message: err?.message || "Failed to send email. Ensure Mailchimp is set up properly.", type: 'error' } 
+        detail: { message: err?.message || "Failed to send email. Use 'Send via Gmail' or Copy Invitation.", type: 'error' } 
       }));
     } finally {
       setEmailSending(false);
@@ -11257,10 +11665,8 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
   };
 
   const copyInvite = () => {
-    const text = `Join my secure WhyOr Vault. 
-1. Sign in at the WhyOr Portal
-2. Use Handshake Token: ${handshakeToken}
-(Valid for 30 minutes)`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vault.whyor.in';
+    const text = `Join my secure WhyOr Vault.\n1. Sign in at the WhyOr Portal: ${origin}\n2. Use Handshake Token: ${handshakeToken}\n(Valid for 30 minutes)`;
     safeCopyToClipboard(text).then((ok) => {
       if (ok) {
         window.dispatchEvent(new CustomEvent('app-notify', { detail: { message: "Invitation text copied to clipboard!", type: 'success' } }));
@@ -11284,9 +11690,9 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
 
       setEmail('');
 
-      // Send silent Welcome Email notification via Mailchimp
+      // Send silent Welcome Email notification via Mailchimp if configured
       try {
-        await fetch('/api/send-email', {
+        const mailRes = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -11298,9 +11704,12 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
             }
           })
         });
-        window.dispatchEvent(new CustomEvent('app-notify', { 
-          detail: { message: `Welcome notification emailed to ${targetEmail}`, type: 'success' } 
-        }));
+        const mailData = await mailRes.json().catch(() => ({}));
+        if (mailRes.ok && mailData.success && !mailData.simulated) {
+          window.dispatchEvent(new CustomEvent('app-notify', { 
+            detail: { message: `Welcome notification emailed to ${targetEmail}`, type: 'success' } 
+          }));
+        }
       } catch (mailErr) {
         console.warn("Could not dispatch welcome mailer notification:", mailErr);
       }
@@ -11345,9 +11754,9 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
         await logVaultAction(vaultId, actor, AuditAction.REVOKE_ACCESS, AuditResourceType.MEMBER, null, `Revoked access for ${targetEmail}`);
       }
 
-      // Send Revocation notification via Mailchimp
+      // Send Revocation notification via Mailchimp if configured
       try {
-        await fetch('/api/send-email', {
+        const mailRes = await fetch('/api/send-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -11359,9 +11768,12 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
             }
           })
         });
-        window.dispatchEvent(new CustomEvent('app-notify', { 
-          detail: { message: `Revocation notification dispatched to ${targetEmail}`, type: 'success' } 
-        }));
+        const mailData = await mailRes.json().catch(() => ({}));
+        if (mailRes.ok && mailData.success && !mailData.simulated) {
+          window.dispatchEvent(new CustomEvent('app-notify', { 
+            detail: { message: `Revocation notification dispatched to ${targetEmail}`, type: 'success' } 
+          }));
+        }
       } catch (mailErr) {
         console.warn("Could not dispatch revocation mailer:", mailErr);
       }
@@ -11386,43 +11798,108 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
         className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-apex-lg shadow-2xl p-4 sm:p-6 md:p-8 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-y-auto custom-scrollbar my-auto"
       >
         <h3 className="text-xl font-bold font-display text-white mb-2">WhyOr Handshake</h3>
-        <p className="text-xs text-slate-500 mb-6 font-medium">To invite family, generate a temporary token and share it. <span className="text-indigo-400">Dispatch securely using Mailchimp Transactional.</span></p>
+        <p className="text-xs text-slate-400 mb-6 font-medium">To invite family or trustees, generate a temporary token and dispatch securely via <span className="text-indigo-400 font-semibold">Gmail</span>, <span className="text-indigo-400 font-semibold">Email</span>, or <span className="text-indigo-400 font-semibold">direct token share</span>.</p>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-6 mb-8 relative overflow-hidden">
+        <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 mb-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-3 opacity-10">
             <RefreshCw className="h-12 w-12" />
           </div>
           
           {handshakeToken ? (
             <div className="text-center">
-              <p className="text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-2">Active Handshake Token</p>
-              <h4 className="text-4xl font-black text-white tracking-[0.3em] font-mono mb-2">{handshakeToken}</h4>
-              <p className="text-[10px] text-emerald-400 font-bold mb-4">VALID FOR {Math.ceil((tokenExpires! - Date.now()) / 60000)} MINUTES</p>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-1.5">Active Handshake Token</p>
+              <h4 className="text-3xl sm:text-4xl font-black text-white tracking-[0.25em] font-mono mb-2">{handshakeToken}</h4>
+              <p className="text-[10px] text-emerald-400 font-bold mb-4">VALID FOR {Math.max(1, Math.ceil((tokenExpires! - Date.now()) / 60000))} MINUTES</p>
               
-              <div className="flex gap-2 mb-4 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800/60">
-                <input 
-                  type="email" 
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="Invite family via email..." 
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-indigo-500"
-                />
+              <div className="text-left mb-3">
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Invitee Email Address</label>
+                <div className="relative">
+                  <input 
+                    type="email" 
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="e.g. family.member@gmail.com" 
+                    className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Primary Dispatch Actions */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <button 
+                  onClick={openGmailCompose}
+                  className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white py-2.5 px-3 rounded-lg font-bold text-xs transition-all shadow-md shadow-red-950/40 active:scale-[0.98]"
+                  title="Open Gmail compose tab with invite pre-filled"
+                >
+                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                  <span>Send via Gmail</span>
+                </button>
                 <button 
                   onClick={sendInviteEmail}
                   disabled={emailSending}
-                  className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg transition-all"
+                  className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white py-2.5 px-3 rounded-lg font-bold text-xs transition-all shadow-md shadow-indigo-950/40 active:scale-[0.98]"
+                  title="Send via Cloud Transactional Mailer"
                 >
-                  {emailSending ? "Sending..." : "Send Email"}
+                  <Send className={cn("h-3.5 w-3.5 shrink-0", emailSending && "animate-spin")} />
+                  <span>{emailSending ? "Sending..." : "Cloud Mailer"}</span>
                 </button>
               </div>
 
-              <button 
-                onClick={copyInvite}
-                className="w-full bg-slate-800 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition-all"
-              >
-                <Copy className="h-4 w-4" />
-                Copy Invitation
-              </button>
+              {/* Secondary Utility Actions */}
+              <div className="grid grid-cols-3 gap-1.5 mb-2">
+                <button 
+                  onClick={copyInvite}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 px-2 rounded-lg font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all"
+                  title="Copy invitation message to clipboard"
+                >
+                  <Copy className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Copy Invite</span>
+                </button>
+                <button 
+                  onClick={openDefaultMailClient}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 px-2 rounded-lg font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all"
+                  title="Open default email app (mailto:)"
+                >
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Mail App</span>
+                </button>
+                <button 
+                  onClick={shareInvitation}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 px-2 rounded-lg font-medium text-[11px] flex items-center justify-center gap-1.5 transition-all"
+                  title="Share via native device sheet"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Share</span>
+                </button>
+              </div>
+
+              {/* Status & Fallback Message */}
+              {emailStatusMessage && (
+                <div className="mt-3 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-left text-xs text-amber-200 flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] leading-tight text-amber-300 font-medium mb-1.5">{emailStatusMessage}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button 
+                        onClick={openGmailCompose}
+                        className="text-[10px] bg-red-600 hover:bg-red-500 text-white font-bold px-2 py-1 rounded inline-flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Mail className="h-3 w-3" />
+                        Send via Gmail Instead
+                      </button>
+                      {onOpenSettings && (
+                        <button
+                          onClick={() => onOpenSettings('smtp')}
+                          className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold px-2 py-1 rounded inline-flex items-center gap-1 border border-slate-700 transition-all cursor-pointer"
+                        >
+                          <Server className="h-3 w-3 text-emerald-400" />
+                          Configure SMTP Gateway
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-4">
@@ -11504,412 +11981,6 @@ function ShareModal({ vaultId, userId, dekHkdfBase, onClose }: { vaultId: string
   );
 }
 
-// --- Connection Integrity Diagnostics ---
-
-interface DiagnosticLog {
-  id: string;
-  name: string;
-  status: 'idle' | 'running' | 'success' | 'failed' | 'warning';
-  message: string;
-  details?: string;
-}
-
-function SystemTroubleshooter() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [tests, setTests] = useState<DiagnosticLog[]>([]);
-  const [testing, setTesting] = useState(false);
-  const [lastTested, setLastTested] = useState<string | null>(null);
-
-  const runAllTests = async () => {
-    if (testing) return;
-    setTesting(true);
-
-    const initial: DiagnosticLog[] = [
-      { id: 'network', name: 'Browser IP Link (Generate_204)', status: 'running', message: 'Checking outbound IP routing pathway to Google Host CDN...', details: '' },
-      { id: 'cfg', name: 'Firebase Credentials Descriptor', status: 'idle', message: 'Ready to inspect localized tokens...', details: '' },
-      { id: 'backend', name: 'App Gateway Server Ingress (/api/health)', status: 'running', message: 'Probing regional sandbox server availability...', details: '' },
-      { id: 'firestore', name: 'Cloud Firestore Connection (Force Server Read)', status: 'idle', message: 'Awaiting network probe sequence...', details: '' },
-      { id: 'cache', name: 'Local Backup Configuration Cache', status: 'idle', message: 'Awaiting disk scan...', details: '' },
-      { id: 'routing', name: 'Sandbox Escape & Route Fallback Verification', status: 'idle', message: 'Ready to assert SPA fallback routing integrity...', details: '' }
-    ];
-    setTests(initial);
-
-    // 1. Direct Network Connectivity Check
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      await fetch('https://clients3.google.com/generate_204', {
-        method: 'GET',
-        mode: 'no-cors',
-        signal: controller.signal,
-        cache: 'no-store'
-      });
-      clearTimeout(timeoutId);
-      setTests(prev => prev.map(t => t.id === 'network' ? {
-        ...t,
-        status: 'success',
-        message: 'PASSED • General outbound internet access is active and responding.'
-      } : t));
-    } catch (err: any) {
-      setTests(prev => prev.map(t => t.id === 'network' ? {
-        ...t,
-        status: 'failed',
-        message: 'FAILED • Internet routing failed or request timed out. Your local firewall or network posture may be blocking outbound Google resources.',
-        details: err.toString()
-      } : t));
-    }
-
-    // 2. Local Credentials Token Check
-    setTests(prev => prev.map(t => t.id === 'cfg' ? { ...t, status: 'running', message: 'Analyzing firebase-applet-config.json...' } : t));
-    try {
-      const missing = [];
-      const required = ['projectId', 'appId', 'apiKey', 'authDomain', 'firestoreDatabaseId'];
-      for (const k of required) {
-        if (!firebaseConfig[k as keyof typeof firebaseConfig]) {
-          missing.push(k);
-        }
-      }
-      if (missing.length > 0) {
-        setTests(prev => prev.map(t => t.id === 'cfg' ? {
-          ...t,
-          status: 'failed',
-          message: `FAILED • Essential configuration keys missing: ${missing.join(', ')}`
-        } : t));
-      } else {
-        const maskedKey = firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 8)}...${firebaseConfig.apiKey.substring(firebaseConfig.apiKey.length - 4)}` : 'None';
-        setTests(prev => prev.map(t => t.id === 'cfg' ? {
-          ...t,
-          status: 'success',
-          message: `PASSED • Firebase credentials structured correctly.`,
-          details: `Project ID: ${firebaseConfig.projectId}\nDatabase ID: ${firebaseConfig.firestoreDatabaseId}\nMasked Key: ${maskedKey}`
-        } : t));
-      }
-    } catch (err: any) {
-      setTests(prev => prev.map(t => t.id === 'cfg' ? { ...t, status: 'failed', message: 'FAILED • Local configuration file was unreadable.', details: err.toString() } : t));
-    }
-
-    // 3. Port 3000 Ingress Health check
-    setTests(prev => prev.map(t => t.id === 'backend' ? { ...t, status: 'running', message: 'Querying backend Node gateway...' } : t));
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch('/api/health', { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setTests(prev => prev.map(t => t.id === 'backend' ? {
-          ...t,
-          status: 'success',
-          message: `PASSED • Gateway connection successful. Node server backend responded status: "${data.status || 'ok'}".`
-        } : t));
-      } else {
-        setTests(prev => prev.map(t => t.id === 'backend' ? {
-          ...t,
-          status: 'warning',
-          message: `MUTED • Server returned HTTP ${res.status}. Your backend is reachable but requires specific parameters.`
-        } : t));
-      }
-    } catch (err: any) {
-      setTests(prev => prev.map(t => t.id === 'backend' ? {
-        ...t,
-        status: 'warning',
-        message: 'MUTED • Backend endpoint check was deferred or offline. (Expected if running under static-only mode).',
-        details: err.toString()
-      } : t));
-    }
-
-    // 4. Cloud Firestore connection bypass cache check
-    setTests(prev => prev.map(t => t.id === 'firestore' ? { ...t, status: 'running', message: 'Sending un-cached test probe to cloud firestore endpoint (firestore.googleapis.com)...' } : t));
-    try {
-      const firestoreReadTask = async () => {
-        // Fetch a non-existent document directly from server to bypass local cache
-        const testRef = doc(db, 'vaults', '__system_connection_test_doc__');
-        // This will attempt to query GCP Firestore servers directly.
-        await getDocFromServer(testRef);
-      };
-
-      const timeoutTask = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Firestore operation timed out (10s threshold). Cloud servers unreachable.')), 10000)
-      );
-
-      await Promise.race([firestoreReadTask(), timeoutTask]);
-
-      setTests(prev => prev.map(t => t.id === 'firestore' ? {
-        ...t,
-        status: 'success',
-        message: 'PASSED • Real-Time Firestore cloud connection validated! Read channel is 100% active.'
-      } : t));
-    } catch (err: any) {
-      const errStr = err.toString();
-      const isReplied = errStr.includes('permission-denied') || errStr.includes('Permission Denied') || errStr.includes('MISSING_OR_INSUFFICIENT_PERMISSIONS') || errStr.includes('not-found');
-      
-      if (isReplied) {
-        setTests(prev => prev.map(t => t.id === 'firestore' ? {
-          ...t,
-          status: 'success',
-          message: 'PASSED • Cloud Firestore is reachable! Firebase backend received, authenticated, and processed the request (received secure access reject as expected).'
-        } : t));
-      } else {
-        setTests(prev => prev.map(t => t.id === 'firestore' ? {
-          ...t,
-          status: 'failed',
-          message: 'FAILED • Could not establish link with Cloud Firestore backend. Server did not respond or connection timed out.',
-          details: errStr
-        } : t));
-      }
-    }
-
-    // 5. Offline Cache Checks
-    setTests(prev => prev.map(t => t.id === 'cache' ? { ...t, status: 'running', message: 'Inspecting browser local storage caches...' } : t));
-    try {
-      const activeUser = auth.currentUser;
-      const keyPrefix = activeUser ? `whyor_vault_config_${activeUser.uid}` : '';
-      let foundKeys = 0;
-      
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && (k.startsWith('whyor_') || k.startsWith('firebase:'))) {
-          foundKeys++;
-        }
-      }
-
-      if (foundKeys > 0) {
-        setTests(prev => prev.map(t => t.id === 'cache' ? {
-          ...t,
-          status: 'success',
-          message: `PASSED • Integrity check complete. Detected ${foundKeys} local configuration and data backups. Offline decrypt is ready.`
-        } : t));
-      } else {
-        setTests(prev => prev.map(t => t.id === 'cache' ? {
-          ...t,
-          status: 'warning',
-          message: 'WARNING • No offline backup configuration found on this browser yet. Login to a valid vault once to seed local storage backups.'
-        } : t));
-      }
-    } catch (err: any) {
-      setTests(prev => prev.map(t => t.id === 'cache' ? { ...t, status: 'failed', message: 'FAILED • Local storage unreadable. Check browser cookie/history settings.', details: err.toString() } : t));
-    }
-
-    // 6. Routing Integrity & Sandbox Escape Regression
-    setTests(prev => prev.map(t => t.id === 'routing' ? { ...t, status: 'running', message: 'Verifying SPA fallback and Sandbox Escape viability...' } : t));
-    try {
-      const cleanUrl = getCleanPreviewUrl();
-      const testPath = cleanUrl + (cleanUrl.endsWith('/') ? '' : '/') + 'test-spa-fallback-path-' + Date.now();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(testPath, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
-      const contentType = res.headers.get('content-type') || '';
-      const isHtml = contentType.includes('text/html');
-      
-      if (res.ok && isHtml) {
-        setTests(prev => prev.map(t => t.id === 'routing' ? {
-          ...t,
-          status: 'success',
-          message: 'PASSED • SPA Routing fallback verified! Absolute-path redirect to subpaths is operational and returns index.html without 404.'
-        } : t));
-      } else {
-        setTests(prev => prev.map(t => t.id === 'routing' ? {
-          ...t,
-          status: 'failed',
-          message: `FAILED • SPA Fallback route returned status ${res.status} (content-type: ${contentType}). Deep URLs may 404.`,
-          details: `Requested: ${testPath}\nStatus: ${res.status}\nContent-Type: ${contentType}`
-        } : t));
-      }
-    } catch (err: any) {
-      setTests(prev => prev.map(t => t.id === 'routing' ? {
-        ...t,
-        status: 'failed',
-        message: 'FAILED • Routing test encountered an error. Could not query local web host routing rules.',
-        details: err.toString()
-      } : t));
-    }
-
-    setLastTested(new Date().toLocaleTimeString());
-    setTesting(false);
-  };
-
-  const handleEscapeIframe = () => {
-    const cleanUrl = getCleanPreviewUrl();
-    safeCopyToClipboard(cleanUrl).then((ok) => {
-      if (ok) {
-        notify("Copied URL to clipboard! Please open this in a regular New Tab (Not Incognito). If asked, sign in as solarastra.in@gmail.com.", "info");
-      }
-    }).catch(() => {});
-    window.open(cleanUrl, '_blank');
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      runAllTests();
-    }
-  }, [isOpen]);
-
-  return (
-    <>
-      {/* Floating Widget Launcher */}
-      <div className="fixed bottom-4 left-4 z-50 pointer-events-auto">
-        <button
-          onClick={() => setIsOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-800 shadow-xl transition-all hover:scale-105"
-          id="diagnostic-launcher"
-        >
-          <Activity className="h-3 w-3 text-indigo-500 animate-pulse" />
-          <span className="text-[10px] font-mono tracking-wider font-bold uppercase">Diagnostics</span>
-        </button>
-      </div>
-
-      <AnimatePresence>
-        {isOpen && (
-          <div className="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto pointer-events-auto">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative"
-            >
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
-              
-              {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-900/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-indigo-600/10 border border-indigo-500/30 rounded-xl flex items-center justify-center">
-                    <Terminal className="text-indigo-400 h-5 w-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-black text-white uppercase tracking-tight font-mono">CONNECTION DIAGNOSTIC CONSOLE</h2>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Protocol Integrity Audit {lastTested && `• Last checked: ${lastTested}`}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setIsOpen(false)}
-                  className="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="p-6 overflow-y-auto flex-1 space-y-6">
-                
-                {/* Introduction Alert */}
-                <div className="p-4 bg-indigo-500/10 rounded-xl border border-indigo-500/20 text-xs text-indigo-300 leading-relaxed space-y-2">
-                  <p className="font-bold uppercase tracking-wider text-[10px] text-indigo-400">⚡ Developer Sandbox Notice</p>
-                  <p>
-                    Firestore connections inside secure developer previews can sometimes be blocked by browser sandbox restrictions, cookie-blocking partitions, or local adblockers. This diagnostic suite queries Firebase servers dynamically to check if your browser can contact the cloud.
-                  </p>
-                </div>
-
-                {/* Test Suite HUD Logs */}
-                <div className="space-y-3 font-mono">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">INTEGRITY CHECKLIST</div>
-                  {tests.map(t => (
-                    <div key={t.id} className="p-4 bg-slate-950/80 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-colors">
-                      <div className="flex items-start gap-3 justify-between">
-                        <div className="flex items-start gap-2">
-                          <div className="mt-1">
-                            {t.status === 'running' && <RefreshCw className="h-3 w-3 text-indigo-400 animate-spin" />}
-                            {t.status === 'success' && <Check className="h-3 w-3 text-emerald-400 font-bold" />}
-                            {t.status === 'failed' && <X className="h-3 w-3 text-red-400 font-bold" />}
-                            {t.status === 'warning' && <AlertCircle className="h-3 w-3 text-amber-500" />}
-                            {t.status === 'idle' && <div className="w-1.5 h-1.5 rounded-full bg-slate-600 my-1 mx-0.5" />}
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-200">{t.name}</h4>
-                            <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">{t.message}</p>
-                          </div>
-                        </div>
-                        <span className={cn(
-                          "text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider shrink-0",
-                          t.status === 'success' && "bg-emerald-500/10 text-emerald-400",
-                          t.status === 'failed' && "bg-red-500/10 text-red-500",
-                          t.status === 'warning' && "bg-amber-500/10 text-amber-400",
-                          t.status === 'running' && "bg-indigo-500/10 text-indigo-400 animate-pulse",
-                          t.status === 'idle' && "bg-slate-800 text-slate-500"
-                        )}>
-                          {t.status}
-                        </span>
-                      </div>
-                      {t.details && (
-                        <pre className="mt-3 p-3 bg-slate-900 rounded border border-slate-8 w-full overflow-x-auto text-[10px] text-slate-500 whitespace-pre-wrap leading-relaxed max-h-40">
-                          {t.details}
-                        </pre>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* FAQ / Warnings Clarification Section */}
-                <div className="space-y-4">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">DEMYSTIFYING CONSOLE ERRORS & SOLUTIONS</div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-800/30 rounded-xl border border-slate-800 text-xs">
-                      <b className="text-slate-300 block mb-1">🔴 wss://... Failed Websocket error?</b>
-                      <span className="text-slate-400 leading-relaxed text-[11px]">
-                        This warning is caused by the Vite Development server having HMR (Hot Module Replacement) disabled in Google Studio. It is 100% benign, harmless, and does not block database access or vault logic!
-                      </span>
-                    </div>
-
-                    <div className="p-4 bg-slate-800/30 rounded-xl border border-slate-800 text-xs">
-                      <b className="text-slate-300 block mb-1">🟡 Chrome "Origin Trial" warnings?</b>
-                      <span className="text-slate-400 leading-relaxed text-[11px]">
-                        WebAuthn feature calls trigger Chrome trial logs like 'writer' not active. These are purely chrome-internal trial logs that can be ignored safely—biometrics function beautifully regardless.
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Recommendations */}
-                  <div className="p-5 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-3">
-                    <div className="flex items-center gap-2 text-amber-500 text-xs font-bold uppercase tracking-wider">
-                      <Sliders className="h-4 w-4" /> Recommended Remediation Steps
-                    </div>
-                    <ul className="list-disc pl-5 text-xs text-amber-300/90 leading-relaxed space-y-2">
-                       <li>
-                        <b>Open In New Tab:</b> Sandboxed iframes inside directories often prevent connections to Google APIs due to strict cookie blocking partitions. Click "Escape Iframe Sandbox" below to bypass.
-                      </li>
-                      <li>
-                        <b>Inspect Adblockers:</b> Strict content filters (uBlock Origin, Brave Shields, PiHole) often mistakenly block telemetry domains like <code>firestore.googleapis.com</code>. Add this site to your allowlist.
-                      </li>
-                      <li>
-                        <b>Network Check:</b> Try switching to a different network (e.g. mobile data hotspot) to confirm your internet gateway is not blocking Firestore ports.
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Footer Buttons */}
-              <div className="p-6 border-t border-slate-800 bg-slate-900/50 flex flex-col sm:flex-row gap-3">
-                <button
-                  type="button"
-                  onClick={runAllTests}
-                  disabled={testing}
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  <RefreshCw className={cn("h-3.5 w-3.5", testing && "animate-spin")} />
-                  {testing ? 'Probing Cloud...' : 'Run Diagnostics Test'}
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={handleEscapeIframe}
-                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-slate-700"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Escape Iframe Sandbox (New Tab)
-                </button>
-              </div>
-
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </>
-  );
-}
 
 /* ==========================================
    EMERGENCY LIFE EVENTS & LIFE RECOVERY MODULE

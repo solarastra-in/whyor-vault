@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -18,10 +19,76 @@ export interface MailOptions {
 }
 
 /**
- * Sends a transactional email using Mailchimp Transactional (Mandrill) API.
+ * Sends an email using standard SMTP credentials via nodemailer.
+ * Supports Gmail, Brevo, SendGrid, Amazon SES, Postmark, and custom SMTP servers.
  */
-export async function sendMailchimpEmail(options: MailOptions): Promise<{ success: boolean; data?: any; error?: string }> {
+export async function sendSmtpEmail(options: MailOptions): Promise<{ success: boolean; data?: any; error?: string }> {
   try {
+    const host = process.env.SMTP_HOST;
+    const port = Number(process.env.SMTP_PORT) || 587;
+    const secure = process.env.SMTP_SECURE === "true" || port === 465;
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+    const from = process.env.SMTP_FROM || options.fromEmail || `WhyOr Vault <${user}>`;
+
+    if (!host || !user || !pass) {
+      return {
+        success: false,
+        error: "SMTP credentials are not fully configured (missing SMTP_HOST, SMTP_USER, or SMTP_PASS in environment)."
+      };
+    }
+
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: {
+        user,
+        pass,
+      },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
+    });
+
+    const toArr: MailRecipient[] = Array.isArray(options.to)
+      ? options.to
+      : [{ email: options.to, type: "to" }];
+
+    const info = await transporter.sendMail({
+      from,
+      to: toArr.map(r => r.email).join(", "),
+      subject: options.subject,
+      text: options.text || (options.html ? options.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ""),
+      html: options.html,
+    });
+
+    console.log(`[SMTP CLIENT] Email sent successfully via ${host}:`, info.messageId);
+    return { success: true, data: info };
+  } catch (err: any) {
+    console.error("[SMTP CLIENT] Dispatch failed:", err);
+    return {
+      success: false,
+      error: `SMTP error: ${err.message || String(err)}`
+    };
+  }
+}
+
+/**
+ * Sends a transactional email using configured SMTP or Mailchimp Transactional (Mandrill) API.
+ */
+export async function sendMailchimpEmail(options: MailOptions): Promise<{ success: boolean; data?: any; error?: string; provider?: string }> {
+  try {
+    // 1. Check if SMTP is configured (preferred standard)
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      console.log(`[MAIL ROUTER] Routing email to SMTP gateway (${process.env.SMTP_HOST})...`);
+      const smtpResult = await sendSmtpEmail(options);
+      if (smtpResult.success) {
+        return { ...smtpResult, provider: "smtp" };
+      }
+      console.warn("[MAIL ROUTER] SMTP dispatch failed, checking Mailchimp fallback:", smtpResult.error);
+    }
+
     const apiKey = process.env.MAILCHIMP_API_KEY || "";
     const fromEmail = options.fromEmail || process.env.MAILCHIMP_FROM_EMAIL || "vault@whyorvault.com";
     const fromName = options.fromName || process.env.MAILCHIMP_FROM_NAME || "WhyOr Vault Escrow Core";
@@ -32,7 +99,7 @@ export async function sendMailchimpEmail(options: MailOptions): Promise<{ succes
       : [{ email: options.to, type: "to" }];
 
     if (!apiKey || apiKey === "a6d12a214167ac734ee42dbfbca655ca-us14") {
-      console.log("\n📬 ======= SIMULATED EMAIL DISPATCH (NO API KEY CONFIG) =======");
+      console.log("\n📬 ======= SIMULATED EMAIL DISPATCH (NO API KEY / SMTP CONFIG) =======");
       console.log(`TO:      ${toArr.map(r => r.email).join(", ")}`);
       console.log(`FROM:    ${fromName} <${fromEmail}>`);
       console.log(`SUBJECT: ${options.subject}`);
@@ -41,8 +108,9 @@ export async function sendMailchimpEmail(options: MailOptions): Promise<{ succes
       console.log("==================================================================\n");
       
       return { 
-        success: true, 
-        data: [{ email: toArr[0]?.email || "unknown", status: "sent", simulated: true }] 
+        success: false, 
+        error: "Email gateway is unconfigured (SMTP or Mailchimp). Direct email dispatch via Gmail or manual invitation copy is recommended.",
+        data: [{ email: toArr[0]?.email || "unknown", status: "simulated_unconfigured", simulated: true }] 
       };
     }
 
@@ -78,41 +146,25 @@ export async function sendMailchimpEmail(options: MailOptions): Promise<{ succes
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(6000)
       });
       result = await response.json();
     } catch (fetchErr: any) {
       console.warn("⚠️ [MAILCHIMP CLIENT] Network exception during secure email dispatch:", fetchErr.message || fetchErr);
-      console.log("\n📬 ======= SIMULATED EMAIL FALLBACK (NETWORK EXCEPTION) =======");
-      console.log(`TO:      ${toArr.map(r => r.email).join(", ")}`);
-      console.log(`FROM:    ${fromName} <${fromEmail}>`);
-      console.log(`SUBJECT: ${options.subject}`);
-      const cleanText = options.html ? options.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : "";
-      console.log(`CONTENT EXCEL: ${cleanText}`);
-      console.log("==================================================================\n");
       return { 
-        success: true, 
-        data: [{ email: toArr[0]?.email || "unknown", status: "sent", simulated: true, exception: fetchErr.message }] 
+        success: false, 
+        error: `Network error connecting to Mailchimp Transactional: ${fetchErr.message || 'Connection timed out'}. Please dispatch via Gmail or copy invitation.`,
+        data: [{ email: toArr[0]?.email || "unknown", status: "failed", simulated: true, exception: fetchErr.message }] 
       };
     }
 
     if (!response.ok) {
       console.error("❌ [MAILCHIMP CLIENT] API reported error:", result);
-      console.warn("⚠️ Returning simulated success pattern to ensure client login, MFA, and payment registration flows do not block.");
-      console.log("\n📬 ======= SIMULATED EMAIL DISPATCH (API FAILURE FALLBACK) =======");
-      console.log(`URI:     https://mandrillapp.com/api/1.0/messages/send.json`);
-      console.log(`TO:      ${toArr.map(r => r.email).join(", ")}`);
-      console.log(`FROM:    ${fromName} <${fromEmail}>`);
-      console.log(`SUBJECT: ${options.subject}`);
-      console.log("---------------------------------------");
-      // Strip HTML tags for clean display of code / instructions in server logs
-      const cleanText = options.html ? options.html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : "";
-      console.log(`CONTENT EXCEL: ${cleanText}`);
-      console.log("==================================================================\n");
-      
       return { 
-        success: true, 
-        data: [{ email: toArr[0]?.email || "unknown", status: "sent", simulated: true, apiError: result }] 
+        success: false, 
+        error: result?.message || (result?.name === "Invalid_Key" ? "Invalid Mailchimp/Mandrill API key." : "Mailchimp API rejected email dispatch."),
+        data: [{ email: toArr[0]?.email || "unknown", status: "rejected", simulated: true, apiError: result }] 
       };
     }
 
